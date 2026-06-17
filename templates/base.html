@@ -19,6 +19,11 @@
                 <option value="高二">高二</option>
                 <option value="高三">高三</option>
             </select>
+            <div class="theme-toggle">
+                <button data-theme="light" onclick="setTheme('light')" title="亮色模式">☀️</button>
+                <button data-theme="dark" onclick="setTheme('dark')" title="暗色模式">🌙</button>
+                <button data-theme="system" onclick="setTheme('system')" title="跟随系统">💻</button>
+            </div>
             <button class="nav-toggle" onclick="document.querySelector('.nav-links').classList.toggle('active')">☰</button>
             <div class="nav-links">
                 <a href="/">首页</a>

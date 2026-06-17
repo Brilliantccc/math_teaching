@@ -113,7 +113,7 @@ async function renderPreview() {
         <button class="btn btn-success btn-sm" onclick="saveTest()" style="margin-bottom:1rem">保存试卷</button>
         <button class="btn btn-primary btn-sm" onclick="exportPdf()" style="margin-bottom:1rem">导出PDF</button>
         <button class="btn btn-outline btn-sm" onclick="window.print()" style="margin-bottom:1rem">打印试卷</button>
-        <p style="color:#6b7280;font-size:0.85rem;margin-bottom:0.5rem">💡 拖拽题目可调整顺序</p>
+        <p class="text-muted" style="font-size:0.85rem;margin-bottom:0.5rem">💡 拖拽题目可调整顺序</p>
         <div class="test-questions" id="sortableList">
             ${questions.map((q, i) => `
                 <div class="q-item" draggable="true" data-index="${i}" data-id="${q.id}"
@@ -231,16 +231,16 @@ async function saveTest() {
 async function loadSavedTests() {
     const data = await api.get("/api/tests");
     if (data.tests.length === 0) {
-        document.getElementById("savedTests").innerHTML = `<p style="color:#9ca3af">暂无已保存的试卷</p>`;
+        document.getElementById("savedTests").innerHTML = `<p class="text-placeholder">暂无已保存的试卷</p>`;
         return;
     }
     document.getElementById("savedTests").innerHTML = data.tests.map(t => {
         const ids = JSON.parse(t.question_ids);
-        return `<div class="q-item" style="padding:0.75rem;border-bottom:1px solid #f3f4f6;display:flex;justify-content:space-between;align-items:center">
+        return `<div class="q-item border-light" style="padding:0.75rem;display:flex;justify-content:space-between;align-items:center">
             <div>
                 <strong>${t.name}</strong>
-                <span style="color:#6b7280;margin-left:0.5rem">${ids.length} 题</span>
-                <span style="color:#9ca3af;margin-left:0.5rem;font-size:0.8rem">${t.created_at}</span>
+                <span class="text-muted" style="margin-left:0.5rem">${ids.length} 题</span>
+                <span class="text-placeholder" style="margin-left:0.5rem;font-size:0.8rem">${t.created_at}</span>
             </div>
             <a href="/api/tests/${t.id}/pdf" class="btn btn-outline btn-sm" download>导出PDF</a>
         </div>`;

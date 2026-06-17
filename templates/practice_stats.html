@@ -68,18 +68,17 @@ async function loadStats() {
                 <div class="stat-row">
                     <span class="stat-name">${escapeHtml(tag)}</span>
                     <div class="stat-bar-container">
-                        <div class="stat-bar" style="width: ${rate}%; background: ${rate >= 60 ? '#10b981' : '#f59e0b'}"></div>
+                        <div class="stat-bar ${rate >= 60 ? 'bar-green' : 'bar-amber'}" style="width: ${rate}%"></div>
                     </div>
                     <span class="stat-rate">${rate}%</span>
                     <span class="stat-count">(${stats.correct}/${stats.total})</span>
                 </div>
             `;
         }).join('');
-    document.getElementById('tagStats').innerHTML = tagStatsHtml || '<p style="color:#9ca3af">暂无数据</p>';
+    document.getElementById('tagStats').innerHTML = tagStatsHtml || '<p class="text-placeholder">暂无数据</p>';
 
     // 渲染难度统计
     const diffLabels = {1: '简单', 2: '中等', 3: '困难'};
-    const diffColors = {1: '#10b981', 2: '#f59e0b', 3: '#ef4444'};
     const diffStatsHtml = [1, 2, 3].map(diff => {
         const stats = data.diff_stats[diff] || {total: 0, correct: 0};
         const rate = stats.total > 0 ? Math.round(stats.correct / stats.total * 100) : 0;
@@ -87,7 +86,7 @@ async function loadStats() {
             <div class="stat-row">
                 <span class="stat-name">${diffLabels[diff]}</span>
                 <div class="stat-bar-container">
-                    <div class="stat-bar" style="width: ${rate}%; background: ${diffColors[diff]}"></div>
+                    <div class="stat-bar bar-diff-${diff}" style="width: ${rate}%"></div>
                 </div>
                 <span class="stat-rate">${rate}%</span>
                 <span class="stat-count">(${stats.correct}/${stats.total})</span>
@@ -98,7 +97,7 @@ async function loadStats() {
 
     // 渲染最近记录
     if (data.recent.length === 0) {
-        document.getElementById('recentRecords').innerHTML = '<p style="color:#9ca3af">暂无练习记录</p>';
+        document.getElementById('recentRecords').innerHTML = '<p class="text-placeholder">暂无练习记录</p>';
     } else {
         const recentHtml = data.recent.map(r => `
             <div class="record-item">

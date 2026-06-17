@@ -156,7 +156,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
 function updatePreview() {
     const content = document.getElementById('content').value;
-    document.getElementById('contentPreview').innerHTML = content || '<span style="color:#999">预览区域</span>';
+    document.getElementById('contentPreview').innerHTML = content || '<span class="text-placeholder">预览区域</span>';
     if (window.MathJax) {
         MathJax.typesetPromise([document.getElementById('contentPreview')]);
     }

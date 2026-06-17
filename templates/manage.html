@@ -7,7 +7,7 @@
 .cascading-trigger {
     appearance: none;
     padding-right: 2.5rem;
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23374151' d='M6 9L1.5 4.5 3 3l3 3 3-3 1.5 1.5z'/%3E%3C/svg%3E");
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%239ca3af' d='M6 9L1.5 4.5 3 3l3 3 3-3 1.5 1.5z'/%3E%3C/svg%3E");
     background-repeat: no-repeat;
     background-position: right 0.75rem center;
     cursor: pointer;
@@ -17,10 +17,10 @@
     top: 100%;
     left: 0;
     min-width: 160px;
-    background: white;
-    border: 1px solid #d1d5db;
+    background: var(--bg-card);
+    border: 1px solid var(--border-input);
     border-radius: 0.375rem;
-    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+    box-shadow: 0 4px 6px -1px var(--shadow-md);
     z-index: 100;
     display: none;
     flex-direction: column;
@@ -39,8 +39,8 @@
     justify-content: space-between;
     align-items: center;
 }
-.cascading-item:hover > .item-content { background: #f3f4f6; }
-.cascading-item .arrow-icon { font-size: 0.75rem; color: #9ca3af; }
+.cascading-item:hover > .item-content { background: var(--bg-hover); }
+.cascading-item .arrow-icon { font-size: 0.75rem; color: var(--text-placeholder); }
 
 /* 试卷统计卡片 */
 .paper-stats-card {
@@ -89,10 +89,10 @@
     top: 0;
     left: 100%;
     min-width: 180px;
-    background: white;
-    border: 1px solid #d1d5db;
+    background: var(--bg-card);
+    border: 1px solid var(--border-input);
     border-radius: 0.375rem;
-    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+    box-shadow: 0 4px 6px -1px var(--shadow-md);
     display: none;
     flex-direction: column;
     list-style: none;
@@ -103,11 +103,11 @@
 .cascading-submenu .cascading-item a {
     padding: 0.5rem 1rem;
     text-decoration: none;
-    color: #374151;
+    color: var(--text-secondary);
     display: block;
     font-size: 0.85rem;
 }
-.cascading-submenu .cascading-item a:hover { background: #f3f4f6; }
+.cascading-submenu .cascading-item a:hover { background: var(--bg-hover); }
 </style>
 <h2 style="margin-bottom:1rem">题库管理</h2>
 
@@ -296,7 +296,7 @@ async function search() {
                     ${q.category ? `<span class="category-badge">${escapeHtml(q.category)}</span>` : ""}
                     ${difficultyBadge(q.difficulty)}
                     ${renderTags(q.tags)}
-                    <span style="color:#9ca3af;font-size:0.8rem;margin-left:auto">来源: ${escapeHtml(q.source) || "—"}</span>
+                    <span class="text-placeholder" style="font-size:0.8rem;margin-left:auto">来源: ${escapeHtml(q.source) || "—"}</span>
                 </div>
             </div>
         `).join("");

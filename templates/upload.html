@@ -11,17 +11,18 @@
 .type-toggle button {
     flex: 1;
     padding: 0.75rem 1rem;
-    border: 2px solid #d1d5db;
-    background: white;
+    border: 2px solid var(--border-input);
+    background: var(--bg-card);
     border-radius: 0.5rem;
     cursor: pointer;
     font-size: 1rem;
     transition: all 0.2s;
+    color: var(--text-body);
 }
 .type-toggle button.active {
-    border-color: #3b82f6;
-    background: #eff6ff;
-    color: #1d4ed8;
+    border-color: var(--primary-light);
+    background: var(--batch-bg);
+    color: var(--primary-hover);
 }
 
 /* LaTeX 编辑器样式 */
@@ -34,7 +35,7 @@
 .latex-preview {
     margin-top: 0.5rem;
     padding: 1rem;
-    background: #f9fafb;
+    background: var(--bg-page);
     border-radius: 0.375rem;
     min-height: 3rem;
 }
@@ -44,7 +45,7 @@
 .cascading-trigger {
     appearance: none;
     padding-right: 2.5rem;
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23374151' d='M6 9L1.5 4.5 3 3l3 3 3-3 1.5 1.5z'/%3E%3C/svg%3E");
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%239ca3af' d='M6 9L1.5 4.5 3 3l3 3 3-3 1.5 1.5z'/%3E%3C/svg%3E");
     background-repeat: no-repeat;
     background-position: right 0.75rem center;
     cursor: pointer;
@@ -54,10 +55,10 @@
     top: 100%;
     left: 0;
     min-width: 160px;
-    background: white;
-    border: 1px solid #d1d5db;
+    background: var(--bg-card);
+    border: 1px solid var(--border-input);
     border-radius: 0.375rem;
-    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+    box-shadow: 0 4px 6px -1px var(--shadow-md);
     z-index: 100;
     display: none;
     flex-direction: column;
@@ -73,17 +74,17 @@
     justify-content: space-between;
     align-items: center;
 }
-.cascading-item:hover > .item-content { background: #f3f4f6; }
-.cascading-item .arrow-icon { font-size: 0.75rem; color: #9ca3af; }
+.cascading-item:hover > .item-content { background: var(--bg-hover); }
+.cascading-item .arrow-icon { font-size: 0.75rem; color: var(--text-placeholder); }
 .cascading-submenu {
     position: absolute;
     top: 0;
     left: 100%;
     min-width: 180px;
-    background: white;
-    border: 1px solid #d1d5db;
+    background: var(--bg-card);
+    border: 1px solid var(--border-input);
     border-radius: 0.375rem;
-    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+    box-shadow: 0 4px 6px -1px var(--shadow-md);
     display: none;
     flex-direction: column;
     list-style: none;
@@ -94,11 +95,11 @@
 .cascading-submenu .cascading-item a {
     padding: 0.5rem 1rem;
     text-decoration: none;
-    color: #374151;
+    color: var(--text-secondary);
     display: block;
     font-size: 0.85rem;
 }
-.cascading-submenu .cascading-item a:hover { background: #f3f4f6; }
+.cascading-submenu .cascading-item a:hover { background: var(--bg-hover); }
 
 /* 选中的标签显示 */
 .selected-tags-container {
@@ -112,8 +113,8 @@
     align-items: center;
     gap: 0.25rem;
     padding: 0.25rem 0.5rem;
-    background: #dbeafe;
-    color: #1e40af;
+    background: var(--grade-bg);
+    color: var(--grade-text);
     border-radius: 0.25rem;
     font-size: 0.875rem;
 }
@@ -121,7 +122,7 @@
     cursor: pointer;
     font-weight: bold;
 }
-.selected-tag .remove-tag:hover { color: #dc2626; }
+.selected-tag .remove-tag:hover { color: var(--red); }
 </style>
 
 <h2 style="margin-bottom:1rem">上传题目</h2>
@@ -168,15 +169,15 @@
             <div class="form-group">
                 <label>题目图片</label>
                 <input type="file" class="form-control" id="imageFile" accept="image/*" onchange="previewImage(this)">
-                <small style="color:#6b7280">拍照、截图或粘贴保存的图片</small>
+                <small class="text-muted">拍照、截图或粘贴保存的图片</small>
             </div>
             <div id="imagePreviewContainer" style="display:none;margin-top:1rem">
                 <label>图片预览</label>
-                <img id="imagePreview" style="max-width:100%;border-radius:8px;border:1px solid #e5e7eb">
+                <img id="imagePreview" style="max-width:100%;border-radius:8px;border:1px solid var(--border)">
                 <button type="button" class="btn btn-outline btn-sm" style="margin-top:0.5rem" onclick="ocrRecognize()">
                     🔍 OCR识别题目
                 </button>
-                <div id="ocrResult" style="display:none;margin-top:0.5rem;padding:0.75rem;background:#f0f9ff;border-radius:6px;border:1px solid #bae6fd">
+                <div id="ocrResult" class="ocr-result-bg" style="display:none;margin-top:0.5rem;padding:0.75rem;border-radius:6px">
                     <strong>识别结果：</strong>
                     <textarea class="form-control" id="ocrText" rows="3" style="margin-top:0.5rem"></textarea>
                     <button type="button" class="btn btn-sm btn-primary" style="margin-top:0.5rem" onclick="useOcrText()">使用识别结果</button>
@@ -193,7 +194,7 @@
             <div class="form-group">
                 <label>LaTeX 代码</label>
                 <textarea class="form-control" id="latexCode" rows="4" placeholder='例如：求解方程：x^2 + 2x - 3 = 0'></textarea>
-                <small style="color:#6b7280">支持标准 LaTeX 数学公式语法</small>
+                <small class="text-muted">支持标准 LaTeX 数学公式语法</small>
             </div>
             <div class="form-group">
                 <label>预览</label>
@@ -380,7 +381,7 @@ function renderLatex() {
     const preview = document.getElementById("latexPreview");
 
     if (!code.trim()) {
-        preview.innerHTML = '<span style="color:#9ca3af">输入 LaTeX 代码后自动预览</span>';
+        preview.innerHTML = '<span class="text-placeholder">输入 LaTeX 代码后自动预览</span>';
         return;
     }
 
@@ -391,7 +392,7 @@ function renderLatex() {
     if (window.MathJax) {
         MathJax.typesetPromise([preview]).catch((err) => {
             console.warn('MathJax 渲染错误:', err);
-            preview.innerHTML = `<em>${code}</em><br><small style="color:#dc2626">渲染失败，请检查语法</small>`;
+            preview.innerHTML = `<em>${code}</em><br><small class="text-danger">渲染失败，请检查语法</small>`;
         });
     }
 }
@@ -488,14 +489,14 @@ document.getElementById("uploadForm").addEventListener("submit", async (e) => {
     selectedTags = [];
     updateSelectedTagsDisplay();
     initTagDropdown();
-    document.getElementById("latexPreview").innerHTML = '<span style="color:#9ca3af">输入 LaTeX 代码后自动预览</span>';
+    document.getElementById("latexPreview").innerHTML = '<span class="text-placeholder">输入 LaTeX 代码后自动预览</span>';
 });
 
 // ========== 初始化 ==========
 initCategoryDropdown();
 initTagDropdown();
 document.getElementById("grade").value = currentGrade;
-document.getElementById("latexPreview").innerHTML = '<span style="color:#9ca3af">输入 LaTeX 代码后自动预览</span>';
+document.getElementById("latexPreview").innerHTML = '<span class="text-placeholder">输入 LaTeX 代码后自动预览</span>';
 
 // LaTeX 实时预览
 document.getElementById("latexCode").addEventListener("input", renderLatex);

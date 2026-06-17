@@ -4,15 +4,15 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>404 - 页面不存在</title>
+    <link rel="stylesheet" href="/static/css/style.css">
     <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #f5f7fa; display: flex; justify-content: center; align-items: center; min-height: 100vh; }
+        body { display: flex; justify-content: center; align-items: center; min-height: 100vh; background: var(--bg-page); }
         .error-container { text-align: center; padding: 40px; }
-        .error-code { font-size: 120px; font-weight: bold; color: #e74c3c; }
-        .error-message { font-size: 24px; color: #555; margin: 20px 0; }
-        .error-detail { color: #888; margin-bottom: 30px; }
-        .btn { display: inline-block; padding: 12px 24px; background: #4a90d9; color: white; text-decoration: none; border-radius: 6px; transition: background 0.3s; }
-        .btn:hover { background: #357abd; }
+        .error-code { font-size: 120px; font-weight: bold; color: var(--red); }
+        .error-message { font-size: 24px; color: var(--text-secondary); margin: 20px 0; }
+        .error-detail { color: var(--text-muted); margin-bottom: 30px; }
+        .btn { display: inline-block; padding: 12px 24px; background: var(--primary-accent); color: white; text-decoration: none; border-radius: 6px; transition: background 0.3s; }
+        .btn:hover { background: var(--primary-hover); }
     </style>
 </head>
 <body>
@@ -22,5 +22,6 @@
         <div class="error-detail">您访问的页面可能已被移除或地址错误</div>
         <a href="/" class="btn">返回首页</a>
     </div>
+    <script src="/static/js/app.js"></script>
 </body>
 </html>

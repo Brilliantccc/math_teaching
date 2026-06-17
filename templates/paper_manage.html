@@ -43,7 +43,7 @@
             <div class="form-group">
                 <label>试卷文件 *</label>
                 <input type="file" class="form-control" id="paperFile" accept=".pdf,image/*">
-                <small style="color:#6b7280">支持 PDF 或图片格式，最大 50MB</small>
+                <small class="text-muted">支持 PDF 或图片格式，最大 50MB</small>
             </div>
             <button type="submit" class="btn btn-primary">上传试卷</button>
         </form>
@@ -59,7 +59,7 @@
             <div class="form-group">
                 <label>答案文件（PDF格式）</label>
                 <input type="file" class="form-control" id="answerFile" accept=".pdf" required>
-                <small style="color:#6b7280">支持 PDF 格式</small>
+                <small class="text-muted">支持 PDF 格式</small>
             </div>
             <button type="submit" class="btn btn-primary">上传答案</button>
         </form>
@@ -75,12 +75,12 @@
         </div>
         <div class="grid grid-2" style="gap:2rem">
             <div>
-                <img id="viewPaperImage" style="max-width:100%;border:1px solid #e5e7eb;border-radius:8px">
+                <img id="viewPaperImage" style="max-width:100%;border:1px solid var(--border);border-radius:8px">
             </div>
             <div>
                 <div style="margin-bottom:1rem">
                     <strong>试卷信息</strong>
-                    <div style="margin-top:0.5rem;color:#6b7280">
+                    <div class="text-muted" style="margin-top:0.5rem">
                         <div>年级：<span id="viewPaperGrade"></span></div>
                         <div>来源：<span id="viewPaperSource"></span></div>
                         <div>上传时间：<span id="viewPaperDate"></span></div>
@@ -136,7 +136,7 @@ async function loadPapers() {
         if (!data.papers || data.papers.length === 0) {
             container.innerHTML = `
                 <div class="empty-state" style="padding:2rem;text-align:center">
-                    <p style="color:#9ca3af">暂无试卷数据</p>
+                    <p class="text-placeholder">暂无试卷数据</p>
                     <button class="btn btn-primary" style="margin-top:1rem" onclick="showUploadModal()">上传第一份试卷</button>
                 </div>
             `;
@@ -144,21 +144,21 @@ async function loadPapers() {
         }
 
         container.innerHTML = data.papers.map(p => `
-            <div class="paper-card" style="border:1px solid #e5e7eb;border-radius:8px;padding:1rem;margin-bottom:1rem;cursor:pointer" onclick="viewPaper(${p.id})">
+            <div class="paper-card" style="border:1px solid var(--border);border-radius:8px;padding:1rem;margin-bottom:1rem;cursor:pointer" onclick="viewPaper(${p.id})">
                 <div style="display:flex;justify-content:space-between;align-items:start">
                     <div>
                         <h4 style="margin:0 0 0.5rem 0">${p.name}</h4>
-                        <div style="color:#6b7280;font-size:0.9rem">
+                        <div class="text-muted" style="font-size:0.9rem">
                             <span>${p.grade} · ${p.source || '未知来源'}</span>
                             <span style="margin-left:1rem">${formatDate(p.created_at)}</span>
                         </div>
-                        <div style="margin-top:0.5rem;font-size:0.85rem;color:#6b7280">
-                            ${p.pdf_path ? '<span style="color:#16a34a">✓ PDF</span>' : '<span style="color:#9ca3af">无PDF</span>'}
-                            ${p.answer_pdf_path ? ' · <span style="color:#16a34a">✓ 答案</span>' : ''}
+                        <div class="text-muted" style="margin-top:0.5rem;font-size:0.85rem">
+                            ${p.pdf_path ? '<span class="text-success">✓ PDF</span>' : '<span class="text-placeholder">无PDF</span>'}
+                            ${p.answer_pdf_path ? ' · <span class="text-success">✓ 答案</span>' : ''}
                         </div>
                     </div>
                     <div style="text-align:right">
-                        <div style="font-weight:bold;color:#3b82f6;margin-bottom:0.25rem">${p.questions_count || 0} 题</div>
+                        <div class="text-primary" style="font-weight:bold;margin-bottom:0.25rem">${p.questions_count || 0} 题</div>
                         <div style="display:flex;gap:0.5rem;justify-content:flex-end;flex-wrap:wrap">
                             ${p.pdf_path ? `<a href="/api/papers/${p.id}/download" class="btn btn-outline btn-sm" onclick="event.stopPropagation()" download>下载PDF</a>` : ''}
                             ${p.answer_pdf_path ? `<a href="/api/papers/${p.id}/answer/download" class="btn btn-outline btn-sm" onclick="event.stopPropagation()" download>下载答案</a>` : ''}
@@ -172,8 +172,8 @@ async function loadPapers() {
     } catch (err) {
         console.error('Load papers error:', err);
         document.getElementById('papersContainer').innerHTML = `
-            <div class="empty-state" style="padding:2rem;text-align:center;color:#ef4444">
-                <p>加载试卷失败：${err.message}</p>
+            <div class="empty-state" style="padding:2rem;text-align:center">
+                <p class="text-danger">加载试卷失败：${err.message}</p>
                 <button class="btn btn-primary" style="margin-top:1rem" onclick="loadPapers()">重试</button>
             </div>
         `;
@@ -280,14 +280,14 @@ async function viewPaper(id) {
         const questionsContainer = document.getElementById('viewPaperQuestions');
         if (paper.questions && Array.isArray(paper.questions) && paper.questions.length > 0) {
             questionsContainer.innerHTML = paper.questions.map(q => `
-                <div style="padding:0.5rem;border-bottom:1px solid #f3f4f6">
+                <div style="padding:0.5rem;border-bottom:1px solid var(--bg-hover)">
                     <div style="font-weight:bold">第 ${q.paper_question_number} 题</div>
-                    <div style="margin-top:0.25rem;color:#6b7280">${q.title || '无题目描述'}</div>
+                    <div class="text-muted" style="margin-top:0.25rem">${q.title || '无题目描述'}</div>
                     <div style="margin-top:0.25rem">${renderTags(q.tags)}</div>
                 </div>
             `).join('');
         } else {
-            questionsContainer.innerHTML = '<p style="color:#9ca3af">暂无提取的题目</p>';
+            questionsContainer.innerHTML = '<p class="text-placeholder">暂无提取的题目</p>';
         }
 
         document.getElementById('viewPaperModal').classList.add('active');
@@ -334,27 +334,6 @@ function formatDate(dateStr) {
     });
 }
 
-function renderTags(tagsStr) {
-    try {
-        const tags = JSON.parse(tagsStr);
-        if (!Array.isArray(tags) || tags.length === 0) return '';
-        return tags.map(tag => `<span class="tag" style="background:#3b82f6;color:white;padding:0.1rem 0.5rem;border-radius:4px;font-size:0.8rem;margin-right:0.25rem">${tag}</span>`).join('');
-    } catch (e) {
-        console.error('Render tags error:', e);
-        return '';
-    }
-}
-
-function toast(message) {
-    const toastEl = document.createElement('div');
-    toastEl.style.cssText = 'position:fixed;bottom:20px;right:20px;background:#3b82f6;color:white;padding:1rem;border-radius:8px;box-shadow:0 2px 10px rgba(0,0,0,0.1);z-index:1000';
-    toastEl.textContent = message;
-    document.body.appendChild(toastEl);
-    setTimeout(() => {
-        toastEl.style.opacity = '0';
-        toastEl.style.transition = 'opacity 0.5s';
-        setTimeout(() => document.body.removeChild(toastEl), 500);
-    }, 3000);
-}
+// renderTags and toast are defined globally in app.js
 </script>
 {% endblock %}

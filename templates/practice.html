@@ -92,11 +92,11 @@ function showQuestion() {
 
     const q = practiceQuestions[currentIndex];
     document.getElementById("practicePanel").innerHTML = `
-        <p style="color:#6b7280">第 ${currentIndex + 1} / ${practiceQuestions.length} 题</p>
+        <p class="text-muted">第 ${currentIndex + 1} / ${practiceQuestions.length} 题</p>
         ${gradeBadge(q.grade)} ${difficultyBadge(q.difficulty)}
         <div class="question-text">${q.title || "请查看题目图片"}</div>
         ${q.image_path ? `<img src="/static/${q.image_path}" style="max-width:100%;max-height:300px;border-radius:8px;margin:1rem auto;display:block">` : ""}
-        ${q.content ? `<p style="color:#6b7280;margin-bottom:1rem">${q.content}</p>` : ""}
+        ${q.content ? `<p class="text-muted" style="margin-bottom:1rem">${q.content}</p>` : ""}
         <div style="margin-bottom:1rem">${renderTags(q.tags)}</div>
         <div class="answer-input">
             <input class="form-control" id="answerInput" placeholder="输入你的答案" onkeydown="if(event.key==='Enter')submitAnswer()">
@@ -144,15 +144,15 @@ function showResults() {
     document.getElementById("resultPanel").style.display = "block";
     document.getElementById("resultPanel").innerHTML = `
         <h2>练习结束</h2>
-        <div style="font-size:3rem;font-weight:700;color:#2563eb;margin:1rem 0">${pct}%</div>
+        <div class="text-primary" style="font-size:3rem;font-weight:700;margin:1rem 0">${pct}%</div>
         <p>答对 ${correctCount} / ${practiceQuestions.length} 题</p>
         <p style="font-size:1.1rem;margin:0.5rem 0">${msg}</p>
         <div style="text-align:left;margin-top:1.5rem;max-height:300px;overflow-y:auto">
             ${sessionResults.map((r, i) => `
-                <div style="padding:0.5rem;border-bottom:1px solid #f3f4f6">
+                <div class="border-light" style="padding:0.5rem">
                     <span>${i + 1}. ${r.question.title || "未命名"}</span>
                     <span style="margin-left:0.5rem">${r.isCorrect ? "✓" : "✗"}</span>
-                    <div style="color:#6b7280;font-size:0.85rem">
+                    <div class="text-muted" style="font-size:0.85rem">
                         你的答案: ${r.userAnswer} | 正确答案: ${r.question.answer || "暂无"}
                     </div>
                 </div>

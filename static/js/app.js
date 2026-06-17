@@ -71,7 +71,50 @@ const api = {
     },
 };
 
-// Global grade management
+// ===== Theme Management =====
+const THEME_KEY = "theme";
+
+function getTheme() {
+    return localStorage.getItem(THEME_KEY) || "system";
+}
+
+function setTheme(mode) {
+    localStorage.setItem(THEME_KEY, mode);
+    applyTheme();
+    updateThemeButtons();
+}
+
+function applyTheme() {
+    const mode = getTheme();
+    const root = document.documentElement;
+    if (mode === "light") {
+        root.setAttribute("data-theme", "light");
+    } else if (mode === "dark") {
+        root.setAttribute("data-theme", "dark");
+    } else {
+        // system: remove attribute, let @media (prefers-color-scheme) work
+        root.removeAttribute("data-theme");
+    }
+}
+
+function updateThemeButtons() {
+    const mode = getTheme();
+    document.querySelectorAll(".theme-toggle button").forEach(btn => {
+        btn.classList.toggle("active", btn.dataset.theme === mode);
+    });
+}
+
+// Listen for system theme changes
+if (window.matchMedia) {
+    window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => {
+        if (getTheme() === "system") {
+            // CSS @media handles it, but update buttons in case UI needs refresh
+            updateThemeButtons();
+        }
+    });
+}
+
+// ===== Global Grade Management =====
 let currentGrade = localStorage.getItem("selectedGrade") || "初一";
 
 function onGradeChange(grade) {
@@ -80,10 +123,18 @@ function onGradeChange(grade) {
     location.reload();
 }
 
+// ===== Init =====
 document.addEventListener("DOMContentLoaded", () => {
     const sel = document.getElementById("globalGradeSelect");
     if (sel) sel.value = currentGrade;
+
+    // Apply theme on load (before paint to avoid flash)
+    applyTheme();
+    updateThemeButtons();
 });
+
+// Apply theme immediately (before DOMContentLoaded to prevent flash)
+applyTheme();
 
 // Toast notification
 function toast(msg, duration = 2000) {
