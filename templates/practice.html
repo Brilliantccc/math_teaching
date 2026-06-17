@@ -1,0 +1,168 @@
+{% extends "base.html" %}
+{% block title %}练习模式 - 数学题库{% endblock %}
+{% block content %}
+<h2 style="margin-bottom:1rem">练习模式</h2>
+
+<div id="setupPanel" class="card">
+    <h3>开始练习</h3>
+    <div class="form-group">
+        <label>年级</label>
+        <select class="form-control" id="practiceGrade" onchange="loadPracticeTags()">
+            <option value="">全部年级</option>
+            {% for g in grades %}<option value="{{g}}">{{g}}</option>{% endfor %}
+        </select>
+    </div>
+    <div class="form-group">
+        <label>知识点（可选，不选则随机抽题）</label>
+        <select class="form-control" id="practiceTag">
+            <option value="">全部知识点</option>
+        </select>
+    </div>
+    <div class="form-group">
+        <label>题目数量</label>
+        <input class="form-control" type="number" id="practiceCount" value="5" min="1" max="30">
+    </div>
+    <button class="btn btn-primary btn-lg" onclick="startPractice()">开始练习</button>
+</div>
+
+<div id="practicePanel" class="practice-card" style="display:none"></div>
+
+<div id="resultPanel" class="practice-card" style="display:none"></div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let practiceQuestions = [];
+let currentIndex = 0;
+let correctCount = 0;
+let sessionResults = [];
+
+// Set default grade
+document.getElementById("practiceGrade").value = currentGrade;
+
+// Load tags filtered by grade
+async function loadPracticeTags() {
+    const grade = document.getElementById("practiceGrade").value;
+    const data = await api.get("/api/tags?grade=" + grade);
+    const sel = document.getElementById("practiceTag");
+    sel.innerHTML = '<option value="">全部知识点</option>';
+    data.tags.forEach(t => {
+        const opt = document.createElement("option");
+        opt.value = t;
+        opt.textContent = t;
+        sel.appendChild(opt);
+    });
+}
+loadPracticeTags();
+
+async function startPractice() {
+    const tag = document.getElementById("practiceTag").value;
+    const count = parseInt(document.getElementById("practiceCount").value) || 5;
+    const grade = document.getElementById("practiceGrade").value;
+
+    const result = await api.post("/api/practice/session", { tag, count, grade });
+    if (result.question_ids.length === 0) {
+        toast("没有足够的题目");
+        return;
+    }
+
+    if (result.question_ids.length > 0) {
+        const batchData = await api.get(`/api/questions/batch?ids=${result.question_ids.join(",")}`);
+        practiceQuestions = batchData.questions;
+    } else {
+        practiceQuestions = [];
+    }
+
+    currentIndex = 0;
+    correctCount = 0;
+    sessionResults = [];
+
+    document.getElementById("setupPanel").style.display = "none";
+    document.getElementById("resultPanel").style.display = "none";
+    document.getElementById("practicePanel").style.display = "block";
+
+    showQuestion();
+}
+
+function showQuestion() {
+    if (currentIndex >= practiceQuestions.length) {
+        showResults();
+        return;
+    }
+
+    const q = practiceQuestions[currentIndex];
+    document.getElementById("practicePanel").innerHTML = `
+        <p style="color:#6b7280">第 ${currentIndex + 1} / ${practiceQuestions.length} 题</p>
+        ${gradeBadge(q.grade)} ${difficultyBadge(q.difficulty)}
+        <div class="question-text">${q.title || "请查看题目图片"}</div>
+        ${q.image_path ? `<img src="/static/${q.image_path}" style="max-width:100%;max-height:300px;border-radius:8px;margin:1rem auto;display:block">` : ""}
+        ${q.content ? `<p style="color:#6b7280;margin-bottom:1rem">${q.content}</p>` : ""}
+        <div style="margin-bottom:1rem">${renderTags(q.tags)}</div>
+        <div class="answer-input">
+            <input class="form-control" id="answerInput" placeholder="输入你的答案" onkeydown="if(event.key==='Enter')submitAnswer()">
+        </div>
+        <button class="btn btn-primary" onclick="submitAnswer()">提交答案</button>
+        <div id="feedback" style="margin-top:1rem"></div>
+    `;
+    document.getElementById("answerInput").focus();
+}
+
+async function submitAnswer() {
+    const answer = document.getElementById("answerInput").value.trim();
+    if (!answer) { toast("请输入答案"); return; }
+
+    const q = practiceQuestions[currentIndex];
+    const result = await api.post("/api/practice/submit", {
+        question_id: q.id,
+        answer,
+    });
+
+    const fb = document.getElementById("feedback");
+    sessionResults.push({ question: q, userAnswer: answer, isCorrect: result.is_correct });
+
+    if (result.is_correct) {
+        correctCount++;
+        fb.innerHTML = `<p class="result-correct">✓ 正确！</p>`;
+    } else {
+        fb.innerHTML = `<p class="result-wrong">✗ 错误</p><p>正确答案：<strong>${result.correct_answer || "暂无"}</strong></p>`;
+    }
+
+    fb.innerHTML += `<button class="btn btn-outline" style="margin-top:1rem" onclick="nextQuestion()">下一题 →</button>`;
+    document.getElementById("answerInput").disabled = true;
+}
+
+function nextQuestion() {
+    currentIndex++;
+    showQuestion();
+}
+
+function showResults() {
+    document.getElementById("practicePanel").style.display = "none";
+    const pct = Math.round((correctCount / practiceQuestions.length) * 100);
+    let msg = pct >= 80 ? "太棒了！" : pct >= 60 ? "还不错，继续加油！" : "多练习，一定能进步！";
+
+    document.getElementById("resultPanel").style.display = "block";
+    document.getElementById("resultPanel").innerHTML = `
+        <h2>练习结束</h2>
+        <div style="font-size:3rem;font-weight:700;color:#2563eb;margin:1rem 0">${pct}%</div>
+        <p>答对 ${correctCount} / ${practiceQuestions.length} 题</p>
+        <p style="font-size:1.1rem;margin:0.5rem 0">${msg}</p>
+        <div style="text-align:left;margin-top:1.5rem;max-height:300px;overflow-y:auto">
+            ${sessionResults.map((r, i) => `
+                <div style="padding:0.5rem;border-bottom:1px solid #f3f4f6">
+                    <span>${i + 1}. ${r.question.title || "未命名"}</span>
+                    <span style="margin-left:0.5rem">${r.isCorrect ? "✓" : "✗"}</span>
+                    <div style="color:#6b7280;font-size:0.85rem">
+                        你的答案: ${r.userAnswer} | 正确答案: ${r.question.answer || "暂无"}
+                    </div>
+                </div>
+            `).join("")}
+        </div>
+        <div style="display:flex;gap:0.5rem;justify-content:center;margin-top:1.5rem;flex-wrap:wrap">
+            <button class="btn btn-primary btn-lg" onclick="location.reload()">再来一轮</button>
+            <a href="/wrong-questions" class="btn btn-outline btn-lg">查看错题本</a>
+        </div>
+    `;
+}
+</script>
+{% endblock %}

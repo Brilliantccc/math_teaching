@@ -1,0 +1,254 @@
+{% extends "base.html" %}
+{% block title %}智能组卷 - 数学题库{% endblock %}
+{% block content %}
+<h2 style="margin-bottom:1rem">智能组卷</h2>
+
+<div class="grid grid-2">
+    <!-- Left: test config -->
+    <div class="card">
+        <h3>生成设置</h3>
+        <div class="form-group">
+            <label>试卷名称</label>
+            <input class="form-control" id="testName" placeholder="例如：初二有理数单元测试">
+        </div>
+        <div class="form-group">
+            <label>年级</label>
+            <select class="form-control" id="testGrade" onchange="loadTestTags()">
+                {% for g in grades %}<option value="{{g}}" {% if loop.first %}selected{% endif %}>{{g}}</option>{% endfor %}
+            </select>
+        </div>
+        <div class="form-group">
+            <label>知识点标签（多选）</label>
+            <div class="tag-selector" id="tagSelector"></div>
+        </div>
+        <div class="form-group">
+            <label>难度等级（多选）</label>
+            <div>
+                <button type="button" class="btn btn-outline btn-sm active" data-diff="1" onclick="this.classList.toggle('active')">简单</button>
+                <button type="button" class="btn btn-outline btn-sm active" data-diff="2" onclick="this.classList.toggle('active')">中等</button>
+                <button type="button" class="btn btn-outline btn-sm" data-diff="3" onclick="this.classList.toggle('active')">困难</button>
+            </div>
+        </div>
+        <div class="form-group">
+            <label>题目数量</label>
+            <input class="form-control" type="number" id="qCount" value="10" min="1" max="50">
+        </div>
+        <button class="btn btn-primary btn-lg" onclick="generateTest()">智能生成试卷</button>
+    </div>
+
+    <!-- Right: preview -->
+    <div class="card">
+        <h3>试卷预览</h3>
+        <div id="testPreview">
+            <div class="empty-state">
+                <div class="icon">📝</div>
+                <p>点击"智能生成"开始组卷</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Saved tests -->
+<div class="card" style="margin-top:1.5rem">
+    <h3>已保存的试卷</h3>
+    <div id="savedTests"></div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let selectedTestTags = [];
+let currentTestIds = [];
+
+// Set default grade
+document.getElementById("testGrade").value = currentGrade;
+
+// Load tags filtered by grade
+async function loadTestTags() {
+    const grade = document.getElementById("testGrade").value;
+    const data = await api.get("/api/tags?grade=" + grade);
+    document.getElementById("tagSelector").innerHTML = data.tags.map(t =>
+        `<button type="button" class="btn btn-outline btn-sm" data-tag="${t}" onclick="toggleTag(this)">${t}</button>`
+    ).join("");
+}
+
+function toggleTag(btn) {
+    const tag = btn.dataset.tag;
+    if (selectedTestTags.includes(tag)) {
+        selectedTestTags = selectedTestTags.filter(t => t !== tag);
+        btn.classList.remove("active");
+    } else {
+        selectedTestTags.push(tag);
+        btn.classList.add("active");
+    }
+}
+
+async function generateTest() {
+    const difficulties = [...document.querySelectorAll("[data-diff].active")].map(b => parseInt(b.dataset.diff));
+    const count = parseInt(document.getElementById("qCount").value) || 10;
+    const grade = document.getElementById("testGrade").value;
+
+    const result = await api.post("/api/tests/auto", {
+        grade,
+        tags: selectedTestTags,
+        difficulties,
+        count,
+    });
+
+    if (result.question_ids.length === 0) {
+        toast("没有找到符合条件的题目");
+        return;
+    }
+
+    currentTestIds = result.question_ids;
+    renderPreview();
+    toast(`已生成 ${result.count} 道题目`);
+}
+
+async function renderPreview() {
+    const batchData = await api.get(`/api/questions/batch?ids=${currentTestIds.join(",")}`);
+    const questions = batchData.questions;
+
+    document.getElementById("testPreview").innerHTML = `
+        <button class="btn btn-success btn-sm" onclick="saveTest()" style="margin-bottom:1rem">保存试卷</button>
+        <button class="btn btn-primary btn-sm" onclick="exportPdf()" style="margin-bottom:1rem">导出PDF</button>
+        <button class="btn btn-outline btn-sm" onclick="window.print()" style="margin-bottom:1rem">打印试卷</button>
+        <p style="color:#6b7280;font-size:0.85rem;margin-bottom:0.5rem">💡 拖拽题目可调整顺序</p>
+        <div class="test-questions" id="sortableList">
+            ${questions.map((q, i) => `
+                <div class="q-item" draggable="true" data-index="${i}" data-id="${q.id}"
+                     ondragstart="dragStart(event)" ondragover="dragOver(event)" ondrop="dragDrop(event)" ondragend="dragEnd(event)">
+                    <span class="drag-handle">☰</span>
+                    <span class="q-number"><strong>${i + 1}.</strong></span>
+                    <span class="q-title">${q.title || "未命名"}</span>
+                    ${gradeBadge(q.grade)}
+                    ${difficultyBadge(q.difficulty)}
+                    <button class="btn-move" onclick="moveItem(${i}, -1)" title="上移">↑</button>
+                    <button class="btn-move" onclick="moveItem(${i}, 1)" title="下移">↓</button>
+                </div>
+                ${q.image_path ? `<img src="/static/${q.image_path}" style="max-width:200px;border-radius:4px;margin:0.5rem 0;margin-left:2rem">` : ""}
+            `).join("")}
+        </div>
+        <div style="margin-top:1rem">
+            <h4>答案</h4>
+            ${questions.map((q, i) => `<p>${i + 1}. ${q.answer || "暂无"}</p>`).join("")}
+        </div>
+    `;
+}
+
+// 拖拽排序功能
+let draggedIndex = null;
+
+function dragStart(e) {
+    draggedIndex = parseInt(e.target.dataset.index);
+    e.target.classList.add('dragging');
+    e.dataTransfer.effectAllowed = 'move';
+}
+
+function dragOver(e) {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    const target = e.target.closest('.q-item');
+    if (target) {
+        target.classList.add('drag-over');
+    }
+}
+
+function dragDrop(e) {
+    e.preventDefault();
+    const target = e.target.closest('.q-item');
+    if (!target) return;
+
+    const targetIndex = parseInt(target.dataset.index);
+    if (draggedIndex !== null && draggedIndex !== targetIndex) {
+        // 重新排列数组
+        const item = currentTestIds.splice(draggedIndex, 1)[0];
+        currentTestIds.splice(targetIndex, 0, item);
+        renderPreview();
+    }
+    target.classList.remove('drag-over');
+}
+
+function dragEnd(e) {
+    e.target.classList.remove('dragging');
+    document.querySelectorAll('.q-item').forEach(el => el.classList.remove('drag-over'));
+    draggedIndex = null;
+}
+
+// 箭头按钮移动
+function moveItem(index, direction) {
+    const newIndex = index + direction;
+    if (newIndex < 0 || newIndex >= currentTestIds.length) return;
+
+    const item = currentTestIds.splice(index, 1)[0];
+    currentTestIds.splice(newIndex, 0, item);
+    renderPreview();
+}
+
+async function exportPdf() {
+    if (currentTestIds.length === 0) {
+        toast("请先生成试卷");
+        return;
+    }
+
+    const title = document.getElementById("testName").value || "数学试卷";
+
+    try {
+        const response = await fetch("/api/tests/preview/pdf", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ question_ids: currentTestIds, title })
+        });
+
+        if (!response.ok) {
+            const err = await response.json();
+            throw new Error(err.error || "导出失败");
+        }
+
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `${title}.pdf`;
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(url);
+        a.remove();
+
+        toast("PDF已导出");
+    } catch (err) {
+        toast("导出失败：" + err.message);
+    }
+}
+
+async function saveTest() {
+    const name = document.getElementById("testName").value || `试卷_${Date.now()}`;
+    const result = await api.post("/api/tests", { name, question_ids: currentTestIds });
+    toast("试卷已保存");
+    loadSavedTests();
+}
+
+async function loadSavedTests() {
+    const data = await api.get("/api/tests");
+    if (data.tests.length === 0) {
+        document.getElementById("savedTests").innerHTML = `<p style="color:#9ca3af">暂无已保存的试卷</p>`;
+        return;
+    }
+    document.getElementById("savedTests").innerHTML = data.tests.map(t => {
+        const ids = JSON.parse(t.question_ids);
+        return `<div class="q-item" style="padding:0.75rem;border-bottom:1px solid #f3f4f6;display:flex;justify-content:space-between;align-items:center">
+            <div>
+                <strong>${t.name}</strong>
+                <span style="color:#6b7280;margin-left:0.5rem">${ids.length} 题</span>
+                <span style="color:#9ca3af;margin-left:0.5rem;font-size:0.8rem">${t.created_at}</span>
+            </div>
+            <a href="/api/tests/${t.id}/pdf" class="btn btn-outline btn-sm" download>导出PDF</a>
+        </div>`;
+    }).join("");
+}
+
+// Init
+loadTestTags();
+loadSavedTests();
+</script>
+{% endblock %}
