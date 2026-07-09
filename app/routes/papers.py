@@ -1,11 +1,12 @@
-"""试卷管理路由"""
+"""试卷管理路由 - SQLAlchemy ORM"""
 
 import os
 import uuid
 from flask import Blueprint, request, jsonify, send_file, current_app
 from werkzeug.utils import secure_filename
+from flask_login import current_user
 
-from app.models import get_db
+from app.models import db, Paper, Question
 from app.constants import ALLOWED_IMAGE_EXTENSIONS, ALLOWED_PDF_EXTENSIONS
 from auth import api_login_required
 
@@ -17,18 +18,13 @@ papers_bp = Blueprint('papers', __name__)
 def get_papers():
     """获取试卷列表"""
     grade = request.args.get("grade", "")
-    conn = get_db()
+
+    query = Paper.query
     if grade:
-        cursor = conn.execute(
-            "SELECT p.*, (SELECT COUNT(*) FROM questions q WHERE q.paper_id = p.id) as questions_count "
-            "FROM papers p WHERE p.grade = ? ORDER BY p.created_at DESC", (grade,))
-    else:
-        cursor = conn.execute(
-            "SELECT p.*, (SELECT COUNT(*) FROM questions q WHERE q.paper_id = p.id) as questions_count "
-            "FROM papers p ORDER BY p.created_at DESC")
-    papers = [dict(row) for row in cursor.fetchall()]
-    conn.close()
-    return jsonify({"papers": papers})
+        query = query.filter(Paper.grade == grade)
+
+    papers = query.order_by(Paper.created_at.desc()).all()
+    return jsonify({"papers": [p.to_dict() for p in papers]})
 
 
 @papers_bp.route("/api/papers", methods=["POST"])
@@ -50,7 +46,7 @@ def create_paper():
             f.save(os.path.join(current_app.config["UPLOAD_FOLDER"], filename))
             pdf_path = f"uploads/{filename}"
 
-    # 处理图片上传（向后兼容）
+    # 处理图片上传
     if "image" in request.files:
         f = request.files["image"]
         if f and f.filename and f.filename.rsplit(".", 1)[-1].lower() in ALLOWED_IMAGE_EXTENSIONS:
@@ -61,44 +57,45 @@ def create_paper():
     if not pdf_path and not image_path:
         return jsonify({"error": "请上传试卷文件（PDF或图片）"}), 400
 
-    conn = get_db()
-    cursor = conn.execute(
-        "INSERT INTO papers (name, grade, image_path, pdf_path, source) VALUES (?, ?, ?, ?, ?)",
-        (name, grade, image_path, pdf_path, source),
+    paper = Paper(
+        name=name, grade=grade, image_path=image_path,
+        pdf_path=pdf_path, source=source, created_by=current_user.id
     )
-    conn.commit()
-    paper_id = cursor.lastrowid
-    conn.close()
+    db.session.add(paper)
+    db.session.commit()
 
-    return jsonify({"id": paper_id, "pdf_path": pdf_path, "image_path": image_path, "message": "试卷已上传"}), 201
+    return jsonify({"id": paper.id, "pdf_path": pdf_path, "image_path": image_path, "message": "试卷已上传"}), 201
 
 
 @papers_bp.route("/api/papers/<int:p_id>", methods=["GET"])
 @api_login_required
 def get_paper(p_id):
     """获取试卷详情"""
-    conn = get_db()
-    cursor = conn.execute("SELECT * FROM papers WHERE id = ?", (p_id,))
-    row = cursor.fetchone()
-    if not row:
-        conn.close()
+    paper = Paper.query.get(p_id)
+    if not paper:
         return jsonify({"error": "试卷不存在"}), 404
-    paper = dict(row)
-    cursor = conn.execute("SELECT * FROM questions WHERE paper_id = ? ORDER BY paper_question_number", (p_id,))
-    paper["questions"] = [dict(r) for r in cursor.fetchall()]
-    conn.close()
-    return jsonify(paper)
+
+    data = paper.to_dict()
+    questions = Question.query.filter_by(paper_id=p_id) \
+        .order_by(Question.paper_question_number).all()
+    data["questions"] = [q.to_dict() for q in questions]
+    return jsonify(data)
 
 
 @papers_bp.route("/api/papers/<int:p_id>", methods=["DELETE"])
 @api_login_required
 def delete_paper(p_id):
     """删除试卷"""
-    conn = get_db()
-    conn.execute("DELETE FROM papers WHERE id = ?", (p_id,))
-    conn.execute("UPDATE questions SET paper_id = NULL, paper_question_number = NULL WHERE paper_id = ?", (p_id,))
-    conn.commit()
-    conn.close()
+    paper = Paper.query.get(p_id)
+    if not paper:
+        return jsonify({"error": "试卷不存在"}), 404
+
+    # 解除关联题目的引用
+    Question.query.filter_by(paper_id=p_id).update({
+        "paper_id": None, "paper_question_number": None
+    })
+    db.session.delete(paper)
+    db.session.commit()
     return jsonify({"message": "试卷已删除"})
 
 
@@ -106,20 +103,14 @@ def delete_paper(p_id):
 @api_login_required
 def download_paper(p_id):
     """下载试卷PDF"""
-    conn = get_db()
-    cursor = conn.execute("SELECT pdf_path, image_path, name FROM papers WHERE id = ?", (p_id,))
-    row = cursor.fetchone()
-    conn.close()
-
-    if not row:
+    paper = Paper.query.get(p_id)
+    if not paper:
         return jsonify({"error": "试卷不存在"}), 404
 
-    pdf_path, image_path, name = row
-
-    if pdf_path:
-        full_path = os.path.join(current_app.config["UPLOAD_FOLDER"], os.path.basename(pdf_path))
+    if paper.pdf_path:
+        full_path = os.path.join(current_app.config["UPLOAD_FOLDER"], os.path.basename(paper.pdf_path))
         if os.path.exists(full_path):
-            return send_file(full_path, as_attachment=True, download_name=f"{name}.pdf")
+            return send_file(full_path, as_attachment=True, download_name=f"{paper.name}.pdf")
 
     return jsonify({"error": "该试卷没有PDF文件"}), 404
 
@@ -128,10 +119,8 @@ def download_paper(p_id):
 @api_login_required
 def upload_paper_answer(p_id):
     """上传答案PDF"""
-    conn = get_db()
-    cursor = conn.execute("SELECT id FROM papers WHERE id = ?", (p_id,))
-    if not cursor.fetchone():
-        conn.close()
+    paper = Paper.query.get(p_id)
+    if not paper:
         return jsonify({"error": "试卷不存在"}), 404
 
     if "answer_pdf" not in request.files:
@@ -143,33 +132,24 @@ def upload_paper_answer(p_id):
 
     filename = secure_filename(f"answer_{uuid.uuid4().hex}_{f.filename}")
     f.save(os.path.join(current_app.config["UPLOAD_FOLDER"], filename))
-    answer_pdf_path = f"uploads/{filename}"
+    paper.answer_pdf_path = f"uploads/{filename}"
+    db.session.commit()
 
-    conn.execute("UPDATE papers SET answer_pdf_path = ? WHERE id = ?", (answer_pdf_path, p_id))
-    conn.commit()
-    conn.close()
-
-    return jsonify({"message": "答案已上传", "answer_pdf_path": answer_pdf_path}), 201
+    return jsonify({"message": "答案已上传", "answer_pdf_path": paper.answer_pdf_path}), 201
 
 
 @papers_bp.route("/api/papers/<int:p_id>/answer/download", methods=["GET"])
 @api_login_required
 def download_paper_answer(p_id):
     """下载答案PDF"""
-    conn = get_db()
-    cursor = conn.execute("SELECT answer_pdf_path, name FROM papers WHERE id = ?", (p_id,))
-    row = cursor.fetchone()
-    conn.close()
-
-    if not row:
+    paper = Paper.query.get(p_id)
+    if not paper:
         return jsonify({"error": "试卷不存在"}), 404
 
-    answer_pdf_path, name = row
-
-    if answer_pdf_path:
-        full_path = os.path.join(current_app.config["UPLOAD_FOLDER"], os.path.basename(answer_pdf_path))
+    if paper.answer_pdf_path:
+        full_path = os.path.join(current_app.config["UPLOAD_FOLDER"], os.path.basename(paper.answer_pdf_path))
         if os.path.exists(full_path):
-            return send_file(full_path, as_attachment=True, download_name=f"{name}_答案.pdf")
+            return send_file(full_path, as_attachment=True, download_name=f"{paper.name}_答案.pdf")
 
     return jsonify({"error": "该试卷没有上传答案"}), 404
 
@@ -178,32 +158,26 @@ def download_paper_answer(p_id):
 @api_login_required
 def add_paper_question(p_id):
     """向试卷添加题目"""
-    data = request.get_json()
-    title = data.get("title", "")
-    content = data.get("content", "")
-    tags = data.get("tags", "[]")
-    difficulty = int(data.get("difficulty", 1))
-    answer = data.get("answer", "")
-    paper_q_num = data.get("paper_question_number")
-    grade = data.get("grade", "初一")
-    category = data.get("category", "")
-
-    conn = get_db()
-    cursor = conn.execute("SELECT image_path, name FROM papers WHERE id = ?", (p_id,))
-    row = cursor.fetchone()
-    if not row:
-        conn.close()
+    paper = Paper.query.get(p_id)
+    if not paper:
         return jsonify({"error": "试卷不存在"}), 404
-    paper_image = row[0]
-    paper_name = row[1]
 
-    source = f"{paper_name} 第{paper_q_num}题"
-    cursor = conn.execute(
-        "INSERT INTO questions (title, content, tags, difficulty, source, image_path, answer, grade, category, paper_id, paper_question_number) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-        (title, content, tags, difficulty, source, paper_image, answer, grade, category, p_id, paper_q_num),
+    data = request.get_json()
+    question = Question(
+        title=data.get("title", ""),
+        content=data.get("content", ""),
+        tags=data.get("tags", "[]"),
+        difficulty=int(data.get("difficulty", 1)),
+        answer=data.get("answer", ""),
+        paper_question_number=data.get("paper_question_number"),
+        grade=data.get("grade", "初一"),
+        category=data.get("category", ""),
+        source=f"{paper.name} 第{data.get('paper_question_number', '?')}题",
+        image_path=paper.image_path,
+        paper_id=p_id,
+        created_by=current_user.id
     )
-    conn.commit()
-    q_id = cursor.lastrowid
-    conn.close()
+    db.session.add(question)
+    db.session.commit()
 
-    return jsonify({"id": q_id, "message": "题目已添加"}), 201
+    return jsonify({"id": question.id, "message": "题目已添加"}), 201

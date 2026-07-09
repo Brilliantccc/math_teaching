@@ -8,6 +8,8 @@ class Config:
     """Base configuration."""
     SECRET_KEY = os.environ.get('SECRET_KEY', 'dev-secret-key-change-in-production')
     DATABASE = os.path.join(basedir, 'question_bank.db')
+    SQLALCHEMY_DATABASE_URI = f"sqlite:///{os.path.join(basedir, 'question_bank.db')}"
+    SQLALCHEMY_TRACK_MODIFICATIONS = False
     UPLOAD_FOLDER = os.path.join(basedir, 'static', 'uploads')
     MAX_CONTENT_LENGTH = 50 * 1024 * 1024  # 50MB
 
@@ -38,6 +40,12 @@ class ProductionConfig(Config):
 
     # 生产环境 SECRET_KEY 必须通过环境变量设置，无默认值
     SECRET_KEY = os.environ.get('SECRET_KEY')
+
+    # Rate limiting: 使用 Redis 存储（需安装 redis 依赖）
+    # REDIS_URL 格式: redis://[:password@]host[:port][/db]
+    REDIS_URL = os.environ.get('REDIS_URL', 'redis://localhost:6379/0')
+    RATELIMIT_STORAGE_URI = REDIS_URL
+    RATELIMIT_DEFAULT = "30/minute"
 
 
 class TestingConfig(Config):

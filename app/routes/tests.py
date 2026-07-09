@@ -1,12 +1,14 @@
-"""组卷管理路由"""
+"""组卷管理路由 - SQLAlchemy ORM"""
 
 import os
 import json
 import uuid
 from datetime import datetime
 from flask import Blueprint, request, jsonify, send_file, current_app, after_this_request
+from flask_login import current_user
+import random
 
-from app.models import get_db
+from app.models import db, Test, Question
 from pdf_utils import generate_test_pdf
 from auth import api_login_required
 
@@ -17,11 +19,8 @@ tests_bp = Blueprint('tests', __name__)
 @api_login_required
 def get_tests():
     """获取组卷列表"""
-    conn = get_db()
-    cursor = conn.execute("SELECT * FROM tests ORDER BY created_at DESC")
-    tests = [dict(row) for row in cursor.fetchall()]
-    conn.close()
-    return jsonify({"tests": tests})
+    tests = Test.query.order_by(Test.created_at.desc()).all()
+    return jsonify({"tests": [t.to_dict() for t in tests]})
 
 
 @tests_bp.route("/api/tests", methods=["POST"])
@@ -31,34 +30,31 @@ def create_test():
     data = request.get_json()
     name = data.get("name", f"试卷_{datetime.now().strftime('%Y%m%d_%H%M%S')}")
     question_ids = json.dumps(data.get("question_ids", []), ensure_ascii=False)
-    conn = get_db()
-    cursor = conn.execute("INSERT INTO tests (name, question_ids) VALUES (?, ?)", (name, question_ids))
-    conn.commit()
-    test_id = cursor.lastrowid
-    conn.close()
-    return jsonify({"id": test_id, "message": "试卷已保存"}), 201
+
+    test = Test(name=name, question_ids=question_ids, created_by=current_user.id)
+    db.session.add(test)
+    db.session.commit()
+
+    return jsonify({"id": test.id, "message": "试卷已保存"}), 201
 
 
 @tests_bp.route("/api/tests/<int:t_id>", methods=["GET"])
 @api_login_required
 def get_test(t_id):
     """获取组卷详情"""
-    conn = get_db()
-    cursor = conn.execute("SELECT * FROM tests WHERE id = ?", (t_id,))
-    row = cursor.fetchone()
-    if row is None:
-        conn.close()
+    test = Test.query.get(t_id)
+    if not test:
         return jsonify({"error": "试卷不存在"}), 404
-    test = dict(row)
-    q_ids = json.loads(test["question_ids"])
+
+    data = test.to_dict()
+    q_ids = json.loads(test.question_ids)
     if q_ids:
-        placeholders = ",".join("?" for _ in q_ids)
-        cursor = conn.execute(f"SELECT * FROM questions WHERE id IN ({placeholders})", q_ids)
-        test["questions"] = [dict(r) for r in cursor.fetchall()]
+        questions = Question.query.filter(Question.id.in_(q_ids)).all()
+        q_map = {q.id: q for q in questions}
+        data["questions"] = [q_map[qid].to_dict() for qid in q_ids if qid in q_map]
     else:
-        test["questions"] = []
-    conn.close()
-    return jsonify(test)
+        data["questions"] = []
+    return jsonify(data)
 
 
 @tests_bp.route("/api/tests/auto", methods=["POST"])
@@ -72,34 +68,22 @@ def auto_generate_test():
     grade = data.get("grade", "")
     category = data.get("category", "")
 
-    where = []
-    params = []
+    query = Question.query
+
     if tags:
-        conditions = [f"tags LIKE ?" for _ in tags]
-        params.extend([f"%{t}%" for t in tags])
-        where.append("(" + " OR ".join(conditions) + ")")
+        tag_conditions = [Question.tags.contains(t) for t in tags]
+        query = query.filter(db.or_(*tag_conditions))
     if difficulties:
-        placeholders = ",".join("?" for _ in difficulties)
-        where.append(f"difficulty IN ({placeholders})")
-        params.extend(difficulties)
+        query = query.filter(Question.difficulty.in_(difficulties))
     if grade:
-        where.append("grade = ?")
-        params.append(grade)
+        query = query.filter(Question.grade == grade)
     if category:
-        where.append("category = ?")
-        params.append(category)
+        query = query.filter(Question.category == category)
 
-    where_sql = ""
-    if where:
-        where_sql = "WHERE " + " AND ".join(where)
-
-    conn = get_db()
-    cursor = conn.execute(
-        f"SELECT id FROM questions {where_sql} ORDER BY RANDOM() LIMIT ?",
-        params + [count],
-    )
-    q_ids = [row[0] for row in cursor.fetchall()]
-    conn.close()
+    all_questions = query.all()
+    # 随机抽样
+    selected = random.sample(all_questions, min(count, len(all_questions)))
+    q_ids = [q.id for q in selected]
 
     return jsonify({"question_ids": q_ids, "count": len(q_ids)})
 
@@ -108,29 +92,20 @@ def auto_generate_test():
 @api_login_required
 def export_test_pdf(t_id):
     """导出组卷PDF"""
-    conn = get_db()
-    cursor = conn.execute("SELECT * FROM tests WHERE id = ?", (t_id,))
-    row = cursor.fetchone()
-    if row is None:
-        conn.close()
+    test = Test.query.get(t_id)
+    if not test:
         return jsonify({"error": "试卷不存在"}), 404
 
-    test = dict(row)
-    q_ids = json.loads(test["question_ids"])
-
+    q_ids = json.loads(test.question_ids)
     if not q_ids:
-        conn.close()
         return jsonify({"error": "试卷没有题目"}), 400
 
-    placeholders = ",".join("?" for _ in q_ids)
-    cursor = conn.execute(f"SELECT * FROM questions WHERE id IN ({placeholders})", q_ids)
-    questions = [dict(r) for r in cursor.fetchall()]
-    conn.close()
+    questions = Question.query.filter(Question.id.in_(q_ids)).all()
+    questions_data = [q.to_dict() for q in questions]
 
-    # 生成PDF
     output_path = os.path.join(current_app.config["UPLOAD_FOLDER"], f"test_{t_id}_{uuid.uuid4().hex}.pdf")
     try:
-        generate_test_pdf(questions, output_path, title=test.get("name", "数学试卷"))
+        generate_test_pdf(questions_data, output_path, title=test.name or "数学试卷")
 
         @after_this_request
         def cleanup(response):
@@ -140,7 +115,7 @@ def export_test_pdf(t_id):
                 pass
             return response
 
-        return send_file(output_path, as_attachment=True, download_name=f"{test.get('name', '试卷')}.pdf")
+        return send_file(output_path, as_attachment=True, download_name=f"{test.name or '试卷'}.pdf")
     except Exception as e:
         return jsonify({"error": f"生成PDF失败: {str(e)}"}), 500
 
@@ -156,16 +131,12 @@ def export_preview_pdf():
     if not question_ids:
         return jsonify({"error": "没有题目"}), 400
 
-    conn = get_db()
-    placeholders = ",".join("?" for _ in question_ids)
-    cursor = conn.execute(f"SELECT * FROM questions WHERE id IN ({placeholders})", question_ids)
-    questions = [dict(r) for r in cursor.fetchall()]
-    conn.close()
+    questions = Question.query.filter(Question.id.in_(question_ids)).all()
+    questions_data = [q.to_dict() for q in questions]
 
-    # 生成PDF
     output_path = os.path.join(current_app.config["UPLOAD_FOLDER"], f"preview_{uuid.uuid4().hex}.pdf")
     try:
-        generate_test_pdf(questions, output_path, title=title)
+        generate_test_pdf(questions_data, output_path, title=title)
 
         @after_this_request
         def cleanup(response):

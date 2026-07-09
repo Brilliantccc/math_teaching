@@ -1,27 +1,23 @@
 # 数学题库管理系统
 
-面向初高中数学的教学资源管理平台，为教师提供题目管理、试卷组卷、在线练习等功能。
+面向初高中数学的教学资源管理平台，支持多用户角色（管理员/教师/学生），提供题目管理、试卷组卷、在线练习、错题本、学习统计等功能。
 
 ## ✨ 功能特性
 
-### 🔐 安全机制
-- 用户认证登录系统
-- **忘记密码** - 通过重置码恢复访问权限（需配置 `RESET_CODE` 环境变量）
-- **修改密码** - 登录后可随时修改密码
-- CSRF 跨站请求伪造防护
-- XSS 跨站脚本攻击防护
-- API 请求速率限制
-- 安全的数据库备份导入验证
-- 生产环境强制要求设置 `SECRET_KEY`，密码重置码无硬编码默认值
+### 👥 多用户系统
+- **注册/登录** — 支持学生、教师角色自主注册，管理员账户自动创建
+- **角色权限** — 管理员（全部权限）、教师（上传/组卷）、学生（练习/错题本）
+- **密码管理** — 修改密码、通过重置码恢复密码，全部持久化到数据库
+- **用户管理** — 管理员可查看、编辑角色、删除用户
 
 ### 📝 题目管理
 - 支持图片上传，自动 OCR 识别题目内容
 - 支持 LaTeX 数学公式编辑，实时预览
 - 按年级（初一至高三）、知识点、难度分类管理
 - 答案与解析分离录入
-- **题目编辑功能** - 随时修改已有题目
-- **批量操作** - 批量删除、批量修改年级
-- **JSON 导入导出** - 题目数据备份与迁移
+- **题目编辑功能** — 随时修改已有题目
+- **批量操作** — 批量删除、批量修改年级
+- **JSON 导入导出** — 题目数据备份与迁移
 
 ### 📄 试卷管理
 - 支持 PDF / 图片格式试卷上传
@@ -30,19 +26,25 @@
 
 ### 🎯 智能组卷
 - 按年级、知识点、难度随机抽题
-- **拖拽排序** - 手动调整题目顺序
+- **拖拽排序** — 手动调整题目顺序
 - 导出 PDF 格式试卷（含答案）
 
 ### 📊 练习模式
 - 按条件随机出题
 - 即时判分与答案展示
-- **练习统计** - 正确率、知识点分析、最近记录
+- **每用户独立记录** — 练习数据按用户隔离
 
 ### 📖 错题本
-- 自动收集练习中答错的题目
-- 按年级、知识点、难度筛选错题
-- 显示答错次数与最近错误答案
-- 支持在错题本内直接重新练习
+- **自动收集** — 练习中答错的题目自动归入错题本
+- **累计统计** — 显示每道题的答错次数
+- **掌握标记** — 可手动标记"已掌握"，筛选未掌握题目
+- **错题重练** — 直接在错题本内重新练习
+
+### 📈 学习统计
+- 总体正确率、连续练习天数
+- 按知识点统计掌握度
+- 按难度统计正确率
+- 最近练习记录
 
 ### ⚡ 性能优化
 - 数据库索引（年级、分类、难度、试卷ID等常用查询字段）
@@ -54,12 +56,14 @@
 - 数据库一键备份导出
 - 支持从备份文件恢复数据（带验证）
 - 自动清理孤立文件
+- CSRF / XSS 防护、API 速率限制
 
 ## 🛠️ 技术栈
 
 | 层级 | 技术 |
 |------|------|
 | 后端 | Python 3.12, Flask 3.0 |
+| ORM | Flask-SQLAlchemy 3.1 |
 | 数据库 | SQLite |
 | 前端 | HTML5, CSS3, JavaScript |
 | 数学渲染 | MathJax 3 |
@@ -74,18 +78,17 @@ math-question-bank/
 ├── app/                      # 应用工厂模块
 │   ├── __init__.py           # 应用工厂与路由注册
 │   ├── constants.py          # 常量定义（年级、知识点）
-│   ├── models.py             # 数据库模型与操作
+│   ├── models.py             # SQLAlchemy ORM 模型（6张表）
 │   ├── cleanup.py            # 文件清理模块
 │   └── routes/               # 蓝图路由
 │       ├── questions.py      # 题目管理 API
 │       ├── papers.py         # 试卷管理 API
 │       ├── tests.py          # 组卷管理 API
-│       ├── practice.py       # 练习模式 API
-│       └── admin.py          # 管理功能 API
-├── auth.py                   # 用户认证模块
+│       ├── practice.py       # 练习 + 错题本 + 学习统计 API
+│       └── admin.py          # 管理 + 用户管理 API
+├── auth.py                   # 多用户认证模块（注册/登录/权限）
 ├── config.py                 # 配置文件
 ├── run.py                    # 应用入口
-├── app.py                    # 遗留入口（已迁移至 Blueprint 架构）
 ├── ocr.py                    # OCR 文字识别模块
 ├── pdf_utils.py              # PDF 读取/生成工具
 ├── requirements.txt          # Python 依赖
@@ -94,8 +97,9 @@ math-question-bank/
 │   ├── js/app.js             # 前端公共脚本
 │   └── uploads/              # 上传文件存储
 └── templates/                # Jinja2 模板
-    ├── base.html             # 基础布局
+    ├── base.html             # 基础布局（含用户信息导航）
     ├── login.html            # 登录页面
+    ├── register.html         # 注册页面
     ├── forgot_password.html  # 忘记密码页面
     ├── change_password.html  # 修改密码页面
     ├── index.html            # 首页
@@ -105,7 +109,7 @@ math-question-bank/
     ├── paper_manage.html     # 试卷管理
     ├── test.html             # 智能组卷
     ├── practice.html         # 练习模式
-    ├── practice_stats.html   # 练习统计
+    ├── practice_stats.html   # 学习统计
     ├── wrong_questions.html  # 错题本
     └── errors/               # 错误页面
         ├── 404.html
@@ -121,19 +125,19 @@ cd math-question-bank
 pip install -r requirements.txt
 ```
 
-### 2. 环境变量配置
+### 2. 环境变量配置（可选）
 
 ```bash
-# 设置密钥（生产环境必须，开发环境可省略）
+# 生产环境必须设置
 set SECRET_KEY=your-secret-key
 
-# 设置 OCR 路径（可选）
+# 设置 OCR 路径（如需 OCR 功能）
 set TESSERACT_PATH=D:\Tesseract-OCR\tesseract.exe
 
-# 设置字体路径（可选）
+# 设置字体路径（PDF 导出用）
 set FONT_PATH=C:\Windows\Fonts\msyh.ttc
 
-# 设置密码重置码（如需使用忘记密码功能则必须配置）
+# 设置密码重置码（如需忘记密码功能）
 set RESET_CODE=your-reset-code
 ```
 
@@ -145,37 +149,40 @@ python run.py
 
 访问 http://localhost:5000
 
-### 4. 默认登录
+### 4. 默认账户
 
 - 用户名：`admin`
 - 密码：`admin123`
 
-> ⚠️ 首次登录后请修改默认密码！
-
-## 🔑 密码管理
-
-### 修改密码
-
-1. 登录后，点击导航栏的"修改密码"
-2. 输入原密码和新密码
-3. 确认修改
-
-### 忘记密码
-
-1. 在登录页面点击"忘记密码？"
-2. 输入重置码（需通过 `RESET_CODE` 环境变量预先配置）
-3. 设置新密码
+> ⚠️ 首次登录后请修改默认密码！可通过 `/register` 页面注册新用户（学生/教师）。
 
 ## 📡 API 接口
 
-### 认证
 所有 API 需要登录认证，通过 `X-CSRFToken` 头部传递 CSRF token。
+
+### 认证
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| GET/POST | `/login` | 登录 |
+| GET/POST | `/register` | 注册 |
+| GET | `/logout` | 退出登录 |
+| POST | `/api/change-password` | 修改密码 |
+| POST | `/api/reset-password` | 重置密码（无需登录） |
+
+### 用户管理（管理员）
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| GET | `/api/user/me` | 获取当前用户信息 |
+| GET | `/api/users` | 获取所有用户列表 |
+| PUT | `/api/users/<id>` | 更新用户（角色/密码） |
+| DELETE | `/api/users/<id>` | 删除用户 |
 
 ### 题目管理
 | 方法 | 路径 | 说明 |
 |------|------|------|
 | GET | `/api/questions` | 获取题目列表（支持筛选分页） |
 | GET | `/api/questions/batch?ids=` | 批量获取题目 |
+| GET | `/api/questions/<id>` | 获取单个题目详情 |
 | POST | `/api/questions` | 创建题目 |
 | PUT | `/api/questions/<id>` | 更新题目 |
 | DELETE | `/api/questions/<id>` | 删除题目 |
@@ -188,29 +195,45 @@ python run.py
 | 方法 | 路径 | 说明 |
 |------|------|------|
 | GET | `/api/papers` | 获取试卷列表 |
+| GET | `/api/papers/<id>` | 获取试卷详情 |
 | POST | `/api/papers` | 上传试卷 |
+| DELETE | `/api/papers/<id>` | 删除试卷 |
 | GET | `/api/papers/<id>/download` | 下载试卷 PDF |
 | POST | `/api/papers/<id>/answer` | 上传答案 PDF |
+| GET | `/api/papers/<id>/answer/download` | 下载答案 PDF |
+| POST | `/api/papers/<id>/questions` | 向试卷添加题目 |
 
 ### 组卷管理
 | 方法 | 路径 | 说明 |
 |------|------|------|
 | GET | `/api/tests` | 获取组卷列表 |
+| GET | `/api/tests/<id>` | 获取组卷详情 |
 | POST | `/api/tests` | 创建组卷 |
 | POST | `/api/tests/auto` | 自动生成组卷 |
 | GET | `/api/tests/<id>/pdf` | 导出组卷 PDF |
+| POST | `/api/tests/preview/pdf` | 预览导出 PDF（不保存） |
 
 ### 练习模式
 | 方法 | 路径 | 说明 |
 |------|------|------|
-| POST | `/api/practice/session` | 开始练习 |
-| POST | `/api/practice/submit` | 提交答案 |
-| GET | `/api/practice/stats` | 获取练习统计 |
-| GET | `/api/practice/wrong-questions` | 获取错题本（支持筛选分页） |
+| POST | `/api/practice/session` | 开始练习（返回随机题目） |
+| POST | `/api/practice/submit` | 提交答案（自动记录错题） |
+| GET | `/api/practice/stats` | 获取学习统计 |
+
+### 错题本
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| GET | `/api/practice/wrong-questions` | 获取错题本（支持分页） |
+| POST | `/api/practice/wrong-questions/<id>/master` | 标记已掌握/取消掌握 |
+| POST | `/api/practice/wrong-questions/retry` | 获取错题用于重练 |
 
 ### 管理功能
 | 方法 | 路径 | 说明 |
 |------|------|------|
+| GET | `/api/grades` | 获取年级列表 |
+| GET | `/api/categories` | 获取分类列表 |
+| GET | `/api/tags` | 获取所有标签 |
+| GET | `/api/stats` | 获取统计数据 |
 | GET | `/api/backup/export` | 导出数据库备份 |
 | POST | `/api/backup/import` | 导入数据库备份 |
 | POST | `/api/ocr` | OCR 图片识别 |
@@ -220,8 +243,9 @@ python run.py
 
 | 路径 | 说明 |
 |------|------|
-| `/` | 首页 |
+| `/` | 首页（统计概览） |
 | `/login` | 登录页面 |
+| `/register` | 注册页面 |
 | `/logout` | 退出登录 |
 | `/forgot-password` | 忘记密码 |
 | `/change-password` | 修改密码 |
@@ -231,12 +255,12 @@ python run.py
 | `/paper-manage` | 试卷管理 |
 | `/test` | 智能组卷 |
 | `/practice` | 练习模式 |
-| `/practice/stats` | 练习统计 |
+| `/practice/stats` | 学习统计 |
 | `/wrong-questions` | 错题本 |
 
 ## 🔧 配置说明
 
-### 开发环境
+### 开发环境（默认）
 
 ```bash
 set FLASK_ENV=development
@@ -248,9 +272,27 @@ python run.py
 ```bash
 set FLASK_ENV=production
 set SECRET_KEY=your-very-long-secret-key    # 必须设置，否则无法启动
+set REDIS_URL=redis://localhost:6379/0      # 速率限制存储（推荐）
 set RESET_CODE=your-reset-code              # 如需忘记密码功能
 python run.py
 ```
+
+> 💡 生产环境推荐使用 Redis 存储速率限制数据（`REDIS_URL`），避免重启后限流状态丢失。未配置时自动回退到内存存储。
+
+## 🗃️ 数据库
+
+使用 SQLAlchemy ORM 管理 SQLite 数据库，包含以下 6 张表：
+
+| 表名 | 说明 |
+|------|------|
+| `users` | 用户账户（管理员/教师/学生） |
+| `questions` | 题目数据 |
+| `papers` | 试卷（PDF/图片） |
+| `tests` | 组卷记录 |
+| `practice_sessions` | 练习记录（每用户独立） |
+| `wrong_questions` | 错题本（每用户独立，累计错误次数） |
+
+数据库文件位于项目根目录 `question_bank.db`，支持通过管理界面一键备份/恢复。
 
 ## 📄 许可证
 

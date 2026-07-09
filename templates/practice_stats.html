@@ -59,19 +59,18 @@ async function loadStats() {
     document.getElementById('accuracy').textContent = data.accuracy + '%';
 
     // 渲染知识点统计
-    const tagStatsHtml = Object.entries(data.tag_stats)
-        .sort((a, b) => b[1].total - a[1].total)
+    const tagStatsHtml = (data.tag_stats || [])
         .slice(0, 10)
-        .map(([tag, stats]) => {
-            const rate = Math.round(stats.correct / stats.total * 100);
+        .map(item => {
+            const rate = Math.round(item.accuracy);
             return `
                 <div class="stat-row">
-                    <span class="stat-name">${escapeHtml(tag)}</span>
+                    <span class="stat-name">${escapeHtml(item.tag)}</span>
                     <div class="stat-bar-container">
-                        <div class="stat-bar ${rate >= 60 ? 'bar-green' : 'bar-amber'}" style="width: ${rate}%"></div>
+                        <div class="stat-bar ${rate >= 60 ? 'bar-green' : 'bar-amber'}" style="transform: scaleX(${rate / 100})"></div>
                     </div>
                     <span class="stat-rate">${rate}%</span>
-                    <span class="stat-count">(${stats.correct}/${stats.total})</span>
+                    <span class="stat-count">(${item.correct}/${item.total})</span>
                 </div>
             `;
         }).join('');
@@ -79,14 +78,16 @@ async function loadStats() {
 
     // 渲染难度统计
     const diffLabels = {1: '简单', 2: '中等', 3: '困难'};
+    const diffStatsMap = {};
+    (data.difficulty_stats || []).forEach(d => { diffStatsMap[d.difficulty] = d; });
     const diffStatsHtml = [1, 2, 3].map(diff => {
-        const stats = data.diff_stats[diff] || {total: 0, correct: 0};
-        const rate = stats.total > 0 ? Math.round(stats.correct / stats.total * 100) : 0;
+        const stats = diffStatsMap[diff] || {total: 0, correct: 0};
+        const rate = stats.total > 0 ? Math.round(stats.accuracy || (stats.correct / stats.total * 100)) : 0;
         return `
             <div class="stat-row">
                 <span class="stat-name">${diffLabels[diff]}</span>
                 <div class="stat-bar-container">
-                    <div class="stat-bar bar-diff-${diff}" style="width: ${rate}%"></div>
+                    <div class="stat-bar bar-diff-${diff}" style="transform: scaleX(${rate / 100})"></div>
                 </div>
                 <span class="stat-rate">${rate}%</span>
                 <span class="stat-count">(${stats.correct}/${stats.total})</span>
@@ -102,8 +103,7 @@ async function loadStats() {
         const recentHtml = data.recent.map(r => `
             <div class="record-item">
                 <span class="record-status ${r.is_correct ? 'correct' : 'wrong'}">${r.is_correct ? '✓' : '✗'}</span>
-                <span class="record-title">${escapeHtml(r.title) || '未命名题目'}</span>
-                <span class="record-answer">你的答案: ${escapeHtml(r.user_answer) || '未填写'}</span>
+                <span class="record-title">${escapeHtml(r.question_title) || '未命名题目'}</span>
                 <span class="record-time">${r.created_at || ''}</span>
             </div>
         `).join('');

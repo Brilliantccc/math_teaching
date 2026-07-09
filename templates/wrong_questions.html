@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block title %}错题本 - 数学题库{% endblock %}
 {% block content %}
-<div class="page-header" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1.5rem;flex-wrap:wrap;gap:1rem">
+<div class="page-header">
     <h2>📖 错题本</h2>
     <div style="display:flex;gap:0.5rem">
         <a href="/practice" class="btn btn-primary">开始练习</a>
@@ -11,18 +11,10 @@
 
 <!-- 筛选栏 -->
 <div class="filter-row">
-    <select class="form-control" id="wrongGrade" style="max-width:120px" onchange="loadWrongQuestions()">
-        <option value="">全部年级</option>
-        {% for g in grades %}<option value="{{g}}">{{g}}</option>{% endfor %}
-    </select>
-    <select class="form-control" id="wrongDiff" style="max-width:120px" onchange="loadWrongQuestions()">
-        <option value="">全部难度</option>
-        <option value="1">简单</option>
-        <option value="2">中等</option>
-        <option value="3">困难</option>
-    </select>
-    <select class="form-control" id="wrongTag" style="max-width:180px" onchange="loadWrongQuestions()">
-        <option value="">全部知识点</option>
+    <select class="form-control" id="wrongMastered" style="max-width:140px" onchange="loadWrongQuestions()">
+        <option value="">全部错题</option>
+        <option value="0">未掌握</option>
+        <option value="1">已掌握</option>
     </select>
     <span id="wrongTotal" class="text-muted" style="margin-left:auto;font-size:0.9rem"></span>
 </div>
@@ -40,39 +32,18 @@
 <script>
 let wrongPage = 1;
 
-// 设置默认年级
-document.getElementById("wrongGrade").value = currentGrade;
-
-// 加载知识点筛选
-async function loadWrongTags() {
-    const grade = document.getElementById("wrongGrade").value;
-    const data = await api.get("/api/tags?grade=" + grade);
-    const sel = document.getElementById("wrongTag");
-    sel.innerHTML = '<option value="">全部知识点</option>';
-    data.tags.forEach(t => {
-        const opt = document.createElement("option");
-        opt.value = t;
-        opt.textContent = t;
-        sel.appendChild(opt);
-    });
-}
-
 async function loadWrongQuestions() {
-    const grade = document.getElementById("wrongGrade").value;
-    const difficulty = document.getElementById("wrongDiff").value;
-    const tag = document.getElementById("wrongTag").value;
+    const mastered = document.getElementById("wrongMastered").value;
 
     let url = `/api/practice/wrong-questions?page=${wrongPage}&per_page=15`;
-    if (grade) url += `&grade=${encodeURIComponent(grade)}`;
-    if (difficulty) url += `&difficulty=${difficulty}`;
-    if (tag) url += `&tag=${encodeURIComponent(tag)}`;
+    if (mastered !== "") url += `&mastered=${mastered}`;
 
     const data = await api.get(url);
     const list = document.getElementById("wrongList");
 
     document.getElementById("wrongTotal").textContent = `共 ${data.total} 道错题`;
 
-    if (data.questions.length === 0) {
+    if (data.wrong_questions.length === 0) {
         list.innerHTML = `
             <div class="empty-state">
                 <div class="icon">🎉</div>
@@ -83,8 +54,10 @@ async function loadWrongQuestions() {
         return;
     }
 
-    list.innerHTML = data.questions.map(q => `
-        <div class="question-item" style="cursor:pointer" onclick="showWrongDetail(${q.id})">
+    list.innerHTML = data.wrong_questions.map(item => {
+        const q = item.question || {};
+        return `
+        <div class="question-item" style="cursor:pointer" onclick="showWrongDetail(${q.id || 0})">
             <div style="flex:1">
                 <div class="q-title">${escapeHtml(q.title) || "未命名题目"}</div>
                 ${q.image_path ? `<img src="/static/${q.image_path}" style="max-width:200px;border-radius:4px;margin:0.5rem 0">` : ""}
@@ -97,12 +70,12 @@ async function loadWrongQuestions() {
                 </div>
             </div>
             <div style="text-align:right;flex-shrink:0;padding-left:1rem">
-                <div class="text-danger" style="font-weight:600;font-size:1.1rem">${q.wrong_count}次答错</div>
-                <div class="text-muted" style="font-size:0.8rem;margin-top:0.25rem">你的答案: ${escapeHtml(q.user_answer) || "未填写"}</div>
-                <div class="text-placeholder" style="font-size:0.75rem;margin-top:0.25rem">${q.last_wrong_time || ""}</div>
+                <div class="text-danger" style="font-weight:600;font-size:1.1rem">${item.wrong_count}次答错</div>
+                <div class="text-placeholder" style="font-size:0.75rem;margin-top:0.25rem">${item.last_wrong_at || ""}</div>
+                <button class="btn btn-sm ${item.mastered ? 'btn-success' : 'btn-outline'}" style="margin-top:0.5rem" onclick="event.stopPropagation();toggleMastered(${item.id})">${item.mastered ? '✓ 已掌握' : '标记掌握'}</button>
             </div>
         </div>
-    `).join("");
+    `}).join("");
 
     document.getElementById("wrongPagination").innerHTML = renderPagination(data.page, data.pages, "goToWrongPage");
 }
@@ -173,8 +146,13 @@ async function submitRetry(qId) {
     document.getElementById("retryAnswerInput").disabled = true;
 }
 
+async function toggleMastered(wqId) {
+    const result = await api.post(`/api/practice/wrong-questions/${wqId}/master`);
+    toast(result.mastered ? '已标记为掌握' : '已取消掌握标记', 2000, "success");
+    loadWrongQuestions();
+}
+
 // 初始化
-loadWrongTags();
 loadWrongQuestions();
 </script>
 {% endblock %}
