@@ -32,7 +32,7 @@ onMounted(async () => {
           </a-col>
           <a-col :span="6">
             <a-card>
-              <a-statistic title="正确次数" :value="stats.correct" :value-style="{ color: '#52c41a' }" />
+              <a-statistic title="正确次数" :value="stats.correct" :value-style="{ color: 'var(--color-success)' }" />
             </a-card>
           </a-col>
           <a-col :span="6">

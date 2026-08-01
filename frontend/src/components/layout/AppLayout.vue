@@ -178,9 +178,9 @@ function handleGradeChange(grade: string) {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  background: #fff;
+  background: var(--color-bg-card);
   padding: 0 24px;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.1);
+  box-shadow: var(--shadow-rest);
   position: sticky;
   top: 0;
   z-index: 100;
@@ -195,17 +195,17 @@ function handleGradeChange(grade: string) {
 .trigger {
   font-size: 18px;
   cursor: pointer;
-  transition: color 0.3s;
+  transition: color var(--transition-normal);
 }
 
 .trigger:hover {
-  color: #1890ff;
+  color: var(--color-primary);
 }
 
 .logo {
   font-size: 18px;
   font-weight: bold;
-  color: #1890ff;
+  color: var(--color-primary);
 }
 
 .header-center {
@@ -222,13 +222,13 @@ function handleGradeChange(grade: string) {
 .content {
   margin: 24px;
   padding: 24px;
-  background: #fff;
-  border-radius: 8px;
+  background: var(--color-bg-card);
+  border-radius: var(--radius-lg);
   min-height: calc(100vh - 64px - 48px);
 }
 
 :deep(.ant-layout-sider) {
-  background: #fff;
+  background: var(--color-bg-card);
 }
 
 :deep(.ant-menu-inline) {

@@ -3,7 +3,8 @@ import { ref, onMounted, watch } from 'vue'
 import { api } from '@/api'
 import { useGradeStore } from '@/stores'
 import type { Question, QuestionListResponse } from '@/types'
-import { SearchOutlined } from '@ant-design/icons-vue'
+import { SearchOutlined, FileSearchOutlined } from '@ant-design/icons-vue'
+import SkeletonCard from '@/components/SkeletonCard.vue'
 
 const gradeStore = useGradeStore()
 
@@ -12,6 +13,7 @@ const total = ref(0)
 const page = ref(1)
 const perPage = ref(20)
 const loading = ref(false)
+const initialLoading = ref(true)
 
 const filters = ref({
   keyword: '',
@@ -41,6 +43,7 @@ async function loadQuestions() {
     console.error('Failed to load questions:', error)
   } finally {
     loading.value = false
+    initialLoading.value = false
   }
 }
 
@@ -131,28 +134,44 @@ watch(() => gradeStore.currentGrade, () => {
     </div>
 
     <!-- 题目列表 -->
-    <a-spin :spinning="loading">
-      <div class="question-list">
-        <div v-for="q in questions" :key="q.id" class="question-card">
-          <div class="question-header">
-            <span class="question-title">{{ q.title || '（无标题）' }}</span>
-            <a-tag :color="getDifficultyColor(q.difficulty)">
-              {{ getDifficultyText(q.difficulty) }}
-            </a-tag>
-          </div>
-          <div class="question-content">{{ q.content }}</div>
-          <div class="question-footer">
-            <span class="grade">{{ q.grade }}</span>
-            <span v-if="q.category" class="category">{{ q.category }}</span>
-          </div>
-        </div>
+    <div class="question-list">
+      <!-- 骨架屏加载 -->
+      <template v-if="initialLoading">
+        <SkeletonCard v-for="i in 5" :key="i" :rows="2" />
+      </template>
 
-        <a-empty v-if="!loading && questions.length === 0" description="暂无题目" />
-      </div>
-    </a-spin>
+      <!-- 正常内容 -->
+      <template v-else>
+        <a-spin :spinning="loading">
+          <div v-for="q in questions" :key="q.id" class="question-card">
+            <div class="question-header">
+              <span class="question-title">{{ q.title || '（无标题）' }}</span>
+              <a-tag :color="getDifficultyColor(q.difficulty)">
+                {{ getDifficultyText(q.difficulty) }}
+              </a-tag>
+            </div>
+            <div class="question-content">{{ q.content }}</div>
+            <div class="question-footer">
+              <span class="grade">{{ q.grade }}</span>
+              <span v-if="q.category" class="category">{{ q.category }}</span>
+            </div>
+          </div>
+
+          <!-- 空状态 -->
+          <a-empty v-if="questions.length === 0" class="empty-state">
+            <template #description>
+              <span>暂无题目</span>
+            </template>
+            <a-button type="primary">
+              开始添加
+            </a-button>
+          </a-empty>
+        </a-spin>
+      </template>
+    </div>
 
     <!-- 分页 -->
-    <div class="pagination">
+    <div v-if="total > perPage" class="pagination">
       <a-pagination
         v-model:current="page"
         :total="total"
@@ -182,7 +201,7 @@ watch(() => gradeStore.currentGrade, () => {
 }
 
 .total {
-  color: #666;
+  color: var(--color-text-muted);
 }
 
 .filters {
@@ -196,15 +215,15 @@ watch(() => gradeStore.currentGrade, () => {
 }
 
 .question-card {
-  border: 1px solid #f0f0f0;
-  border-radius: 8px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
   padding: 16px;
   margin-bottom: 12px;
-  transition: box-shadow 0.3s;
+  transition: box-shadow var(--transition-normal);
 }
 
 .question-card:hover {
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  box-shadow: var(--shadow-hover);
 }
 
 .question-header {
@@ -220,7 +239,7 @@ watch(() => gradeStore.currentGrade, () => {
 }
 
 .question-content {
-  color: #666;
+  color: var(--color-text-muted);
   margin-bottom: 8px;
   line-height: 1.5;
 }
@@ -232,12 +251,17 @@ watch(() => gradeStore.currentGrade, () => {
 
 .grade, .category {
   font-size: 12px;
-  color: #999;
+  color: var(--color-text-placeholder);
 }
 
 .pagination {
   display: flex;
   justify-content: center;
   margin-top: 16px;
+}
+
+.empty-state {
+  padding: 60px 0;
+  text-align: center;
 }
 </style>

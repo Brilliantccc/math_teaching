@@ -143,12 +143,12 @@ const teacherFeatures = [
 
 .welcome-section h1 {
   font-size: 32px;
-  color: #1890ff;
+  color: var(--color-primary);
   margin-bottom: 8px;
 }
 
 .welcome-section p {
-  color: #666;
+  color: var(--color-text-muted);
   font-size: 16px;
 }
 
@@ -159,8 +159,8 @@ const teacherFeatures = [
 .stat-card {
   text-align: center;
   padding: 20px;
-  background: #f0f5ff;
-  border-radius: 8px;
+  background: var(--color-primary-bg);
+  border-radius: var(--radius-lg);
 }
 
 .features-section {
@@ -170,18 +170,18 @@ const teacherFeatures = [
 .features-section h2 {
   font-size: 20px;
   margin-bottom: 16px;
-  color: #333;
+  color: var(--color-text-primary);
 }
 
 .feature-card {
   height: 200px;
   cursor: pointer;
-  transition: transform 0.3s, box-shadow 0.3s;
+  transition: transform var(--transition-normal), box-shadow var(--transition-normal);
 }
 
 .feature-card:hover {
   transform: translateY(-4px);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  box-shadow: var(--shadow-hover);
 }
 
 .feature-icon {
@@ -190,6 +190,6 @@ const teacherFeatures = [
   align-items: center;
   height: 120px;
   font-size: 48px;
-  color: #1890ff;
+  color: var(--color-primary);
 }
 </style>

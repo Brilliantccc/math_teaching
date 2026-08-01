@@ -105,27 +105,27 @@ async function handleSubmit() {
   justify-content: center;
   align-items: center;
   min-height: 100vh;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: var(--color-primary);
 }
 
 .forgot-card {
   width: 400px;
   padding: 40px;
-  background: #fff;
-  border-radius: 8px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  background: var(--color-bg-card);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-modal);
 }
 
 .forgot-title {
   text-align: center;
   font-size: 28px;
-  color: #1890ff;
+  color: var(--color-primary);
   margin-bottom: 8px;
 }
 
 .forgot-subtitle {
   text-align: center;
-  color: #666;
+  color: var(--color-text-muted);
   margin-bottom: 32px;
 }
 

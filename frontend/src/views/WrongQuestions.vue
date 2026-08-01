@@ -82,11 +82,11 @@ onMounted(() => {
 }
 
 .wrong-item {
-  border: 1px solid #f0f0f0;
-  border-radius: 8px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
   padding: 16px;
   margin-bottom: 12px;
-  background: #fff;
+  background: var(--color-bg-card);
 }
 
 .question-header {
@@ -102,7 +102,7 @@ onMounted(() => {
 }
 
 .question-content {
-  color: #666;
+  color: var(--color-text-muted);
   margin-bottom: 8px;
 }
 
@@ -113,7 +113,7 @@ onMounted(() => {
 }
 
 .wrong-count {
-  color: #ff4d4f;
+  color: var(--color-error);
   font-size: 14px;
 }
 

@@ -67,9 +67,9 @@ async function autoGenerate() {
 }
 
 .config-panel {
-  background: #f5f5f5;
+  background: var(--color-bg-hover);
   padding: 24px;
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
   margin-top: 16px;
 }
 
