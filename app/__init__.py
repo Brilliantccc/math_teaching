@@ -10,7 +10,7 @@ from flask_limiter.util import get_remote_address
 from config import config
 from auth import init_auth, auth_bp
 from app.routes import questions_bp, papers_bp, tests_bp, practice_bp, admin_bp
-from app.models import init_db
+from app.models import db, init_db
 
 # 初始化速率限制器（延迟初始化）
 limiter = Limiter(key_func=get_remote_address)

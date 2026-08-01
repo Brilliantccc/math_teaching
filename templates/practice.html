@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block title %}练习模式 - 数学题库{% endblock %}
 {% block content %}
-<h2 style="margin-bottom:1rem">练习模式</h2>
+<h2 class="page-heading">练习模式</h2>
 
 <div id="setupPanel" class="card">
     <h3>开始练习</h3>
@@ -25,9 +25,9 @@
     <button class="btn btn-primary btn-lg" onclick="startPractice()">开始练习</button>
 </div>
 
-<div id="practicePanel" class="practice-card" style="display:none"></div>
+<div id="practicePanel" class="practice-card hidden"></div>
 
-<div id="resultPanel" class="practice-card" style="display:none"></div>
+<div id="resultPanel" class="practice-card hidden"></div>
 {% endblock %}
 
 {% block scripts %}
@@ -60,28 +60,39 @@ async function startPractice() {
     const count = parseInt(document.getElementById("practiceCount").value) || 5;
     const grade = document.getElementById("practiceGrade").value;
 
+    const btn = document.querySelector("#setupPanel .btn-primary");
+    showLoading(btn);
     const result = await api.post("/api/practice/session", { tag, count, grade });
+    hideLoading(btn);
+
     if (result.question_ids.length === 0) {
-        toast("没有足够的题目");
+        toast("没有足够的题目，请先上传一些题目或调整筛选条件", 3000, "error");
         return;
     }
 
-    if (result.question_ids.length > 0) {
-        const batchData = await api.get(`/api/questions/batch?ids=${result.question_ids.join(",")}`);
-        practiceQuestions = batchData.questions;
-    } else {
-        practiceQuestions = [];
-    }
+    const batchData = await api.get(`/api/questions/batch?ids=${result.question_ids.join(",")}`);
+    practiceQuestions = batchData.questions;
 
     currentIndex = 0;
     correctCount = 0;
     sessionResults = [];
 
-    document.getElementById("setupPanel").style.display = "none";
-    document.getElementById("resultPanel").style.display = "none";
-    document.getElementById("practicePanel").style.display = "block";
+    document.getElementById("setupPanel").classList.add("hidden");
+    document.getElementById("resultPanel").classList.add("hidden");
+    document.getElementById("practicePanel").classList.remove("hidden");
 
     showQuestion();
+}
+
+function exitPractice() {
+    if (confirm("确定要退出练习吗？当前进度将不会保存。")) {
+        practiceQuestions = [];
+        currentIndex = 0;
+        correctCount = 0;
+        sessionResults = [];
+        document.getElementById("practicePanel").classList.add("hidden");
+        document.getElementById("setupPanel").classList.remove("hidden");
+    }
 }
 
 function showQuestion() {
@@ -91,20 +102,41 @@ function showQuestion() {
     }
 
     const q = practiceQuestions[currentIndex];
+    const pct = Math.round((currentIndex / practiceQuestions.length) * 100);
     document.getElementById("practicePanel").innerHTML = `
-        <p style="color:#6b7280">第 ${currentIndex + 1} / ${practiceQuestions.length} 题</p>
-        ${gradeBadge(q.grade)} ${difficultyBadge(q.difficulty)}
-        <div class="question-text">${q.title || "请查看题目图片"}</div>
-        ${q.image_path ? `<img src="/static/${q.image_path}" style="max-width:100%;max-height:300px;border-radius:8px;margin:1rem auto;display:block">` : ""}
-        ${q.content ? `<p style="color:#6b7280;margin-bottom:1rem">${q.content}</p>` : ""}
-        <div style="margin-bottom:1rem">${renderTags(q.tags)}</div>
-        <div class="answer-input">
-            <input class="form-control" id="answerInput" placeholder="输入你的答案" onkeydown="if(event.key==='Enter')submitAnswer()">
+        <div class="practice-header">
+            <div class="practice-progress">
+                <div class="practice-progress-bar">
+                    <div class="practice-progress-fill" style="width:${pct}%"></div>
+                </div>
+                <span class="practice-progress-text">${currentIndex + 1} / ${practiceQuestions.length}</span>
+            </div>
+            <button class="btn btn-outline btn-sm" onclick="exitPractice()">退出练习</button>
         </div>
-        <button class="btn btn-primary" onclick="submitAnswer()">提交答案</button>
-        <div id="feedback" style="margin-top:1rem"></div>
+        <div class="practice-body">
+            ${gradeBadge(q.grade)} ${difficultyBadge(q.difficulty)}
+            <div class="question-text">${q.title || "请查看题目图片"}</div>
+            ${q.image_path ? `<img src="/static/${q.image_path}" class="practice-image">` : ""}
+            ${q.content ? `<p class="text-muted practice-content">${q.content}</p>` : ""}
+            <div class="practice-tags">${renderTags(q.tags)}</div>
+            <div class="answer-input">
+                <input class="form-control" id="answerInput" placeholder="输入你的答案" onkeydown="if(event.key==='Enter')submitAnswer()">
+            </div>
+            <div class="practice-actions">
+                <button class="btn btn-outline" onclick="skipQuestion()">跳过此题</button>
+                <button class="btn btn-primary" onclick="submitAnswer()">提交答案</button>
+            </div>
+            <div id="feedback" class="practice-feedback"></div>
+        </div>
     `;
     document.getElementById("answerInput").focus();
+}
+
+function skipQuestion() {
+    const q = practiceQuestions[currentIndex];
+    sessionResults.push({ question: q, userAnswer: "(跳过)", isCorrect: false });
+    currentIndex++;
+    showQuestion();
 }
 
 async function submitAnswer() {
@@ -124,11 +156,20 @@ async function submitAnswer() {
         correctCount++;
         fb.innerHTML = `<p class="result-correct">✓ 正确！</p>`;
     } else {
-        fb.innerHTML = `<p class="result-wrong">✗ 错误</p><p>正确答案：<strong>${result.correct_answer || "暂无"}</strong></p>`;
+        let analysisHtml = "";
+        if (q.analysis) {
+            analysisHtml = `<div class="practice-analysis"><strong>解析：</strong>${q.analysis}</div>`;
+        }
+        fb.innerHTML = `
+            <p class="result-wrong">✗ 错误</p>
+            <p>正确答案：<strong>${result.correct_answer || "暂无"}</strong></p>
+            ${analysisHtml}
+        `;
     }
 
-    fb.innerHTML += `<button class="btn btn-outline" style="margin-top:1rem" onclick="nextQuestion()">下一题 →</button>`;
+    fb.innerHTML += `<button class="btn btn-outline practice-next-btn" onclick="nextQuestion()">下一题 →</button>`;
     document.getElementById("answerInput").disabled = true;
+    document.querySelector(".practice-actions").style.display = "none";
 }
 
 function nextQuestion() {
@@ -137,28 +178,29 @@ function nextQuestion() {
 }
 
 function showResults() {
-    document.getElementById("practicePanel").style.display = "none";
+    document.getElementById("practicePanel").classList.add("hidden");
     const pct = Math.round((correctCount / practiceQuestions.length) * 100);
     let msg = pct >= 80 ? "太棒了！" : pct >= 60 ? "还不错，继续加油！" : "多练习，一定能进步！";
 
-    document.getElementById("resultPanel").style.display = "block";
-    document.getElementById("resultPanel").innerHTML = `
+    const panel = document.getElementById("resultPanel");
+    panel.classList.remove("hidden");
+    panel.innerHTML = `
         <h2>练习结束</h2>
-        <div style="font-size:3rem;font-weight:700;color:#2563eb;margin:1rem 0">${pct}%</div>
+        <div class="result-score text-primary">${pct}%</div>
         <p>答对 ${correctCount} / ${practiceQuestions.length} 题</p>
-        <p style="font-size:1.1rem;margin:0.5rem 0">${msg}</p>
-        <div style="text-align:left;margin-top:1.5rem;max-height:300px;overflow-y:auto">
+        <p class="result-message">${msg}</p>
+        <div class="result-list">
             ${sessionResults.map((r, i) => `
-                <div style="padding:0.5rem;border-bottom:1px solid #f3f4f6">
+                <div class="border-light result-item">
                     <span>${i + 1}. ${r.question.title || "未命名"}</span>
-                    <span style="margin-left:0.5rem">${r.isCorrect ? "✓" : "✗"}</span>
-                    <div style="color:#6b7280;font-size:0.85rem">
+                    <span class="result-icon">${r.isCorrect ? "✓" : "✗"}</span>
+                    <div class="text-muted" style="font-size:0.85rem">
                         你的答案: ${r.userAnswer} | 正确答案: ${r.question.answer || "暂无"}
                     </div>
                 </div>
             `).join("")}
         </div>
-        <div style="display:flex;gap:0.5rem;justify-content:center;margin-top:1.5rem;flex-wrap:wrap">
+        <div class="result-actions">
             <button class="btn btn-primary btn-lg" onclick="location.reload()">再来一轮</button>
             <a href="/wrong-questions" class="btn btn-outline btn-lg">查看错题本</a>
         </div>
