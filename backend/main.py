@@ -1,0 +1,90 @@
+"""FastAPI 应用入口"""
+
+import os
+import sys
+
+# 添加项目根目录到路径
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from contextlib import asynccontextmanager
+from fastapi import FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import JSONResponse
+
+from backend.config import settings
+from backend.database import init_db
+from backend.api import api_router
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """应用生命周期"""
+    # 启动时初始化数据库
+    await init_db()
+    # 确保上传目录存在
+    os.makedirs(settings.UPLOAD_DIR, exist_ok=True)
+    yield
+
+
+app = FastAPI(
+    title=settings.APP_NAME,
+    description="数学题库管理系统 API",
+    version="2.0.0",
+    lifespan=lifespan
+)
+
+# CORS 配置
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:5173", "http://localhost:3000"],  # Vue 开发服务器
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# 挂载上传文件目录
+app.mount("/uploads", StaticFiles(directory=settings.UPLOAD_DIR), name="uploads")
+
+# 注册 API 路由
+app.include_router(api_router)
+
+
+@app.get("/")
+async def root():
+    """根路径"""
+    return {"message": "数学题库管理系统 API", "version": "2.0.0"}
+
+
+@app.get("/health")
+async def health():
+    """健康检查"""
+    return {"status": "ok"}
+
+
+@app.exception_handler(404)
+async def not_found(request: Request, exc):
+    """404 错误处理"""
+    if request.url.path.startswith("/api/"):
+        return JSONResponse(
+            status_code=404,
+            content={"error": "资源不存在"}
+        )
+    return JSONResponse(
+        status_code=404,
+        content={"error": "页面不存在"}
+    )
+
+
+@app.exception_handler(500)
+async def internal_error(request: Request, exc):
+    """500 错误处理"""
+    return JSONResponse(
+        status_code=500,
+        content={"error": "服务器内部错误"}
+    )
+
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run("backend.main:app", host="0.0.0.0", port=8000, reload=True)

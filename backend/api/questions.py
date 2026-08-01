@@ -1,0 +1,252 @@
+"""题目管理路由"""
+
+import os
+import uuid
+from typing import Optional
+
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Query
+from fastapi.responses import JSONResponse
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select, or_
+from sqlalchemy.orm import selectinload
+
+from backend.core.deps import get_db, get_current_user, require_teacher
+from backend.core.exceptions import NotFoundException
+from backend.models.user import User
+from backend.models.question import Question
+from backend.schemas.question import (
+    QuestionUpdate, QuestionResponse, QuestionListResponse,
+    BatchDeleteRequest, BatchUpdateRequest
+)
+from backend.config import settings
+
+router = APIRouter()
+
+ALLOWED_IMAGE_EXTENSIONS = {'jpg', 'jpeg', 'png', 'gif', 'bmp'}
+
+
+@router.get("", response_model=QuestionListResponse)
+async def get_questions(
+    tag: str = Query(default=''),
+    keyword: str = Query(default=''),
+    difficulty: Optional[int] = Query(default=None),
+    grade: str = Query(default=''),
+    category: str = Query(default=''),
+    page: int = Query(default=1, ge=1),
+    per_page: int = Query(default=20, ge=1, le=100),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """获取题目列表"""
+    query = select(Question)
+
+    if tag:
+        query = query.where(Question.tags.contains(tag))
+    if keyword:
+        query = query.where(
+            or_(
+                Question.title.contains(keyword),
+                Question.content.contains(keyword)
+            )
+        )
+    if difficulty:
+        query = query.where(Question.difficulty == difficulty)
+    if grade:
+        query = query.where(Question.grade == grade)
+    if category:
+        query = query.where(Question.category == category)
+
+    # 获取总数
+    from sqlalchemy import func
+    count_query = select(func.count()).select_from(query.subquery())
+    total = (await db.execute(count_query)).scalar() or 0
+
+    # 分页查询
+    query = query.order_by(Question.created_at.desc())
+    query = query.offset((page - 1) * per_page).limit(per_page)
+    result = await db.execute(query)
+    questions = result.scalars().all()
+
+    return QuestionListResponse(
+        questions=[QuestionResponse(**q.to_dict()) for q in questions],
+        total=total,
+        page=page,
+        per_page=per_page,
+        pages=(total + per_page - 1) // per_page
+    )
+
+
+@router.get("/batch")
+async def get_questions_batch(
+    ids: str = Query(default=''),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """批量获取题目"""
+    if not ids:
+        return {"questions": []}
+
+    id_list = [int(x) for x in ids.split(",") if x.strip().isdigit()]
+    if not id_list:
+        return {"questions": []}
+
+    result = await db.execute(
+        select(Question).where(Question.id.in_(id_list))
+    )
+    questions = result.scalars().all()
+
+    # 按请求顺序返回
+    q_map = {q.id: q for q in questions}
+    ordered = [q_map[qid].to_dict() for qid in id_list if qid in q_map]
+
+    return {"questions": ordered}
+
+
+@router.get("/{q_id}", response_model=QuestionResponse)
+async def get_question(
+    q_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """获取单个题目详情"""
+    question = await db.get(Question, q_id)
+    if not question:
+        raise NotFoundException("题目")
+    return QuestionResponse(**question.to_dict())
+
+
+@router.post("/{q_id}", response_model=dict)
+async def create_question(
+    q_id: int = None,
+    title: str = Form(default=''),
+    content: str = Form(default=''),
+    tags: str = Form(default='[]'),
+    difficulty: int = Form(default=1),
+    source: str = Form(default=''),
+    answer: str = Form(default=''),
+    analysis: str = Form(default=''),
+    grade: str = Form(default='初一'),
+    category: str = Form(default=''),
+    paper_id: Optional[int] = Form(default=None),
+    paper_question_number: Optional[int] = Form(default=None),
+    image: Optional[UploadFile] = File(default=None),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_teacher)
+):
+    """创建新题目"""
+    image_path = ""
+
+    # 处理图片上传
+    if image and image.filename:
+        ext = image.filename.rsplit(".", 1)[-1].lower()
+        if ext in ALLOWED_IMAGE_EXTENSIONS:
+            filename = f"{uuid.uuid4().hex}_{image.filename}"
+            upload_path = os.path.join(settings.UPLOAD_DIR, filename)
+            os.makedirs(os.path.dirname(upload_path), exist_ok=True)
+            with open(upload_path, "wb") as f:
+                content_bytes = await image.read()
+                f.write(content_bytes)
+            image_path = f"uploads/{filename}"
+
+    question = Question(
+        title=title, content=content, tags=tags, difficulty=difficulty,
+        source=source, image_path=image_path, answer=answer, analysis=analysis,
+        grade=grade, category=category,
+        paper_id=paper_id,
+        paper_question_number=paper_question_number,
+        created_by=current_user.id
+    )
+    db.add(question)
+    await db.commit()
+    await db.refresh(question)
+
+    return {"id": question.id, "message": "题目已添加"}
+
+
+@router.put("/{q_id}", response_model=dict)
+async def update_question(
+    q_id: int,
+    data: QuestionUpdate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_teacher)
+):
+    """更新题目"""
+    question = await db.get(Question, q_id)
+    if not question:
+        raise NotFoundException("题目")
+
+    update_data = data.model_dump(exclude_unset=True)
+    for key, value in update_data.items():
+        setattr(question, key, value)
+
+    await db.commit()
+    return {"message": "题目已更新"}
+
+
+@router.delete("/{q_id}", response_model=dict)
+async def delete_question(
+    q_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_teacher)
+):
+    """删除题目"""
+    question = await db.get(Question, q_id)
+    if not question:
+        raise NotFoundException("题目")
+
+    await db.delete(question)
+    await db.commit()
+    return {"message": "题目已删除"}
+
+
+@router.post("/batch-delete", response_model=dict)
+async def batch_delete_questions(
+    data: BatchDeleteRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_teacher)
+):
+    """批量删除题目"""
+    if not data.ids:
+        raise HTTPException(status_code=400, detail="请选择要删除的题目")
+
+    result = await db.execute(
+        select(Question).where(Question.id.in_(data.ids))
+    )
+    questions = result.scalars().all()
+
+    for q in questions:
+        await db.delete(q)
+
+    await db.commit()
+    return {"message": f"已删除 {len(data.ids)} 道题目"}
+
+
+@router.post("/batch-update", response_model=dict)
+async def batch_update_questions(
+    data: BatchUpdateRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_teacher)
+):
+    """批量更新题目属性"""
+    if not data.ids:
+        raise HTTPException(status_code=400, detail="请选择要更新的题目")
+    if not data.updates:
+        raise HTTPException(status_code=400, detail="没有要更新的内容")
+
+    allowed_fields = {"grade", "category", "difficulty", "tags"}
+    filtered = {k: v for k, v in data.updates.items() if k in allowed_fields}
+
+    if not filtered:
+        raise HTTPException(status_code=400, detail="无效的更新字段")
+
+    result = await db.execute(
+        select(Question).where(Question.id.in_(data.ids))
+    )
+    questions = result.scalars().all()
+
+    for q in questions:
+        for key, value in filtered.items():
+            setattr(q, key, value)
+
+    await db.commit()
+    return {"message": f"已更新 {len(data.ids)} 道题目"}
