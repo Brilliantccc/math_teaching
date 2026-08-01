@@ -20,6 +20,8 @@ from backend.api import api_router
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """应用生命周期"""
+    # 确保数据目录存在
+    os.makedirs("./backend/data", exist_ok=True)
     # 启动时初始化数据库
     await init_db()
     # 确保上传目录存在
@@ -42,6 +44,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# 确保上传目录存在（StaticFiles 挂载时目录必须存在）
+os.makedirs(settings.UPLOAD_DIR, exist_ok=True)
 
 # 挂载上传文件目录
 app.mount("/uploads", StaticFiles(directory=settings.UPLOAD_DIR), name="uploads")

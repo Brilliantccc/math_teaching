@@ -22,8 +22,16 @@ env/
 *.log
 
 # 上传文件
+backend/uploads/*
+!backend/uploads/.gitkeep
 static/uploads/*
 !static/uploads/.gitkeep
+
+# 数据库文件
+backend/data/*.db
+backend/data/*.db-journal
+backend/data/*.db-wal
+backend/data/*.db-shm
 
 # IDE
 .vscode/
