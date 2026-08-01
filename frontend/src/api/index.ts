@@ -52,3 +52,26 @@ api.interceptors.response.use(
 )
 
 export { api }
+
+/** LLM 状态查询 */
+export async function getLLMStatus() {
+  const res = await api.get('/api/llm/status')
+  return res.data
+}
+
+/** AI 图片识别 → 结构化题目 */
+export async function extractFromImage(file: File) {
+  const formData = new FormData()
+  formData.append('image', file)
+  const res = await api.post('/api/llm/extract', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+    timeout: 60000
+  })
+  return res.data
+}
+
+/** AI 生成答案和解析 */
+export async function analyzeQuestion(content: string) {
+  const res = await api.post('/api/llm/analyze', { content }, { timeout: 60000 })
+  return res.data
+}

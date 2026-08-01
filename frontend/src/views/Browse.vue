@@ -5,6 +5,7 @@ import { useGradeStore } from '@/stores'
 import type { Question, QuestionListResponse } from '@/types'
 import { SearchOutlined, FileSearchOutlined } from '@ant-design/icons-vue'
 import SkeletonCard from '@/components/SkeletonCard.vue'
+import LatexText from '@/components/LatexText.vue'
 
 const gradeStore = useGradeStore()
 
@@ -150,7 +151,7 @@ watch(() => gradeStore.currentGrade, () => {
                 {{ getDifficultyText(q.difficulty) }}
               </a-tag>
             </div>
-            <div class="question-content">{{ q.content }}</div>
+            <div class="question-content"><LatexText :content="q.content" /></div>
             <div class="question-footer">
               <span class="grade">{{ q.grade }}</span>
               <span v-if="q.category" class="category">{{ q.category }}</span>

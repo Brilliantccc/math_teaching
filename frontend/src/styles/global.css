@@ -24,6 +24,21 @@ body {
   font-style: italic;
 }
 
+/* KaTeX 渲染容器 */
+.latex-text {
+  line-height: 1.8;
+}
+
+.latex-text .katex-display {
+  margin: 8px 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+.latex-text .katex {
+  font-size: 1.05em;
+}
+
 /* 标签样式 */
 .tag-badge {
   display: inline-block;

@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore, useThemeStore, useGradeStore } from '@/stores'
 import { GRADES } from '@/stores/grade'
+import { getLLMStatus } from '@/api'
 import {
   MenuOutlined,
   HomeOutlined,
@@ -26,6 +27,16 @@ const themeStore = useThemeStore()
 const gradeStore = useGradeStore()
 
 const collapsed = ref(false)
+const llmConfigured = ref(false)
+
+onMounted(async () => {
+  try {
+    const status = await getLLMStatus()
+    llmConfigured.value = status.configured
+  } catch {
+    // 静默处理
+  }
+})
 
 const themeIcon = computed(() => BulbOutlined)
 
@@ -97,6 +108,11 @@ function handleGradeChange(grade: string) {
       </div>
 
       <div class="header-right">
+        <a-tooltip>
+          <template #title>AI: {{ llmConfigured ? '已配置' : '未配置' }}</template>
+          <a-badge :status="llmConfigured ? 'success' : 'default'" text="AI" />
+        </a-tooltip>
+
         <a-dropdown>
           <a-button type="text">
             <component :is="themeIcon" />

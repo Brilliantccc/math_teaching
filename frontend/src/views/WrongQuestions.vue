@@ -3,6 +3,7 @@ import { ref, onMounted } from 'vue'
 import { api } from '@/api'
 import type { WrongQuestion, WrongQuestionListResponse } from '@/types'
 import { message } from 'ant-design-vue'
+import LatexText from '@/components/LatexText.vue'
 
 const wrongQuestions = ref<WrongQuestion[]>([])
 const total = ref(0)
@@ -52,7 +53,7 @@ onMounted(() => {
             {{ item.mastered ? '已掌握' : '未掌握' }}
           </a-tag>
         </div>
-        <div class="question-content">{{ item.question?.content }}</div>
+        <div class="question-content"><LatexText :content="item.question?.content || ''" /></div>
         <div class="question-footer">
           <span class="wrong-count">错误 {{ item.wrong_count }} 次</span>
           <a-button type="link" @click="toggleMastered(item.id)">

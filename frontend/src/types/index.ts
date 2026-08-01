@@ -164,3 +164,26 @@ export interface ClassStats {
   most_wrong_questions: { question_id: number; question_title: string; wrong_count: number }[]
   trend: { date: string; count: number }[]
 }
+
+/** LLM 状态 */
+export interface LLMStatus {
+  configured: boolean
+  model: string
+}
+
+/** LLM 题目提取结果 */
+export interface LLMExtractResult {
+  title: string
+  content: string
+  answer: string
+  analysis: string
+  tags: string[]
+  difficulty: number
+  category: string
+}
+
+/** LLM 分析结果 */
+export interface LLMAnalyzeResult {
+  answer: string
+  analysis: string
+}

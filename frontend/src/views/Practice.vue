@@ -4,6 +4,7 @@ import { api } from '@/api'
 import { useGradeStore } from '@/stores'
 import { message } from 'ant-design-vue'
 import CelebrationOverlay from '@/components/CelebrationOverlay.vue'
+import LatexText from '@/components/LatexText.vue'
 
 const gradeStore = useGradeStore()
 
@@ -153,7 +154,7 @@ function handleCelebrationDone() {
           </a-tag>
         </div>
         <div class="question-title">{{ currentQuestion.title }}</div>
-        <div class="question-content">{{ currentQuestion.content }}</div>
+        <div class="question-content"><LatexText :content="currentQuestion.content" /></div>
 
         <a-divider />
 
@@ -185,10 +186,10 @@ function handleCelebrationDone() {
               style="margin-bottom: 16px"
             />
             <div class="correct-answer">
-              <strong>正确答案：</strong>{{ result.correct_answer }}
+              <strong>正确答案：</strong><LatexText :content="result.correct_answer" />
             </div>
             <div v-if="result.analysis" class="analysis">
-              <strong>解析：</strong>{{ result.analysis }}
+              <strong>解析：</strong><LatexText :content="result.analysis" />
             </div>
           </div>
         </Transition>
