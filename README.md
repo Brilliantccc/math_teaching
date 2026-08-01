@@ -125,29 +125,80 @@ cd math-question-bank
 pip install -r requirements.txt
 ```
 
-### 2. 环境变量配置（可选）
+### 2. 安装系统依赖（OCR 功能需要）
+
+<details>
+<summary><b>Windows</b></summary>
+
+下载并安装 [Tesseract-OCR](https://github.com/UB-Mannheim/tesseract/wiki)，默认安装路径即可。
+</details>
+
+<details>
+<summary><b>macOS</b></summary>
 
 ```bash
-# 生产环境必须设置
+brew install tesseract
+brew install tesseract-lang  # 中文语言包
+```
+</details>
+
+<details>
+<summary><b>Linux (Ubuntu/Debian)</b></summary>
+
+```bash
+sudo apt update
+sudo apt install tesseract-ocr tesseract-ocr-chi-sim
+```
+</details>
+
+### 3. 环境变量配置（可选）
+
+程序会**自动检测**系统路径，通常无需手动配置。如需覆盖默认值：
+
+<details>
+<summary><b>Windows (CMD)</b></summary>
+
+```cmd
 set SECRET_KEY=your-secret-key
-
-# 设置 OCR 路径（如需 OCR 功能）
 set TESSERACT_PATH=D:\Tesseract-OCR\tesseract.exe
-
-# 设置字体路径（PDF 导出用）
 set FONT_PATH=C:\Windows\Fonts\msyh.ttc
-
-# 设置密码重置码（如需忘记密码功能）
 set RESET_CODE=your-reset-code
 ```
+</details>
 
-### 3. 启动服务
+<details>
+<summary><b>Windows (PowerShell)</b></summary>
+
+```powershell
+$env:SECRET_KEY="your-secret-key"
+$env:TESSERACT_PATH="D:\Tesseract-OCR\tesseract.exe"
+$env:FONT_PATH="C:\Windows\Fonts\msyh.ttc"
+$env:RESET_CODE="your-reset-code"
+```
+</details>
+
+<details>
+<summary><b>macOS / Linux</b></summary>
+
+```bash
+export SECRET_KEY=your-secret-key
+export RESET_CODE=your-reset-code
+
+# 仅在非标准安装时需要：
+# export TESSERACT_PATH=/usr/local/bin/tesseract
+# export FONT_PATH=/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc
+```
+</details>
+
+### 4. 启动服务
 
 ```bash
 python run.py
 ```
 
-访问 http://localhost:5000
+访问 http://localhost:5001
+
+> 💡 端口号可在 [run.py](run.py) 中修改，默认为 `5001`。
 
 ### 4. 默认账户
 

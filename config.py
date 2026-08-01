@@ -1,7 +1,57 @@
 import os
+import sys
 from datetime import timedelta
 
 basedir = os.path.abspath(os.path.dirname(__file__))
+
+
+def _default_tesseract_path():
+    """根据操作系统返回 Tesseract 默认路径"""
+    if sys.platform == 'win32':
+        candidates = [
+            r'D:\Tesseract-OCR\tesseract.exe',
+            r'C:\Program Files\Tesseract-OCR\tesseract.exe',
+            r'C:\Program Files (x86)\Tesseract-OCR\tesseract.exe',
+        ]
+    elif sys.platform == 'darwin':
+        candidates = [
+            '/opt/homebrew/bin/tesseract',
+            '/usr/local/bin/tesseract',
+        ]
+    else:
+        candidates = [
+            '/usr/bin/tesseract',
+            '/usr/local/bin/tesseract',
+        ]
+    for p in candidates:
+        if os.path.exists(p):
+            return p
+    return candidates[0]
+
+
+def _default_font_path():
+    """根据操作系统返回中文字体默认路径"""
+    if sys.platform == 'win32':
+        font_dir = os.path.join(os.environ.get('WINDIR', r'C:\Windows'), 'Fonts')
+        candidates = [
+            os.path.join(font_dir, 'msyh.ttc'),
+            os.path.join(font_dir, 'simhei.ttf'),
+        ]
+    elif sys.platform == 'darwin':
+        candidates = [
+            '/System/Library/Fonts/PingFang.ttc',
+            '/System/Library/Fonts/STHeiti Light.ttc',
+        ]
+    else:
+        candidates = [
+            '/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc',
+            '/usr/share/fonts/truetype/wqy/wqy-microhei.ttc',
+            '/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc',
+        ]
+    for p in candidates:
+        if os.path.exists(p):
+            return p
+    return candidates[0]
 
 
 class Config:
@@ -20,11 +70,11 @@ class Config:
     # Rate limiting
     RATELIMIT_DEFAULT = "60/minute"
 
-    # OCR settings
-    TESSERACT_PATH = os.environ.get('TESSERACT_PATH', r'D:\Tesseract-OCR\tesseract.exe')
+    # OCR settings (跨平台：自动检测系统路径，也可通过环境变量覆盖)
+    TESSERACT_PATH = os.environ.get('TESSERACT_PATH', _default_tesseract_path())
 
-    # Font settings (for PDF generation)
-    FONT_PATH = os.environ.get('FONT_PATH', r'C:\Windows\Fonts\msyh.ttc')
+    # Font settings for PDF generation (跨平台：自动检测系统字体，也可通过环境变量覆盖)
+    FONT_PATH = os.environ.get('FONT_PATH', _default_font_path())
 
 
 class DevelopmentConfig(Config):
