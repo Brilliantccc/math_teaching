@@ -1,8 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { useAuthStore, useThemeStore, useGradeStore } from '@/stores'
-import { GRADES } from '@/stores/grade'
+import { useAuthStore } from '@/stores'
 import { getLLMStatus } from '@/api'
 import {
   MenuOutlined,
@@ -15,16 +14,11 @@ import {
   TeamOutlined,
   UploadOutlined,
   UserOutlined,
-  LogoutOutlined,
-  DownOutlined,
-  BulbOutlined,
-  SettingOutlined
+  LogoutOutlined
 } from '@ant-design/icons-vue'
 
 const router = useRouter()
 const authStore = useAuthStore()
-const themeStore = useThemeStore()
-const gradeStore = useGradeStore()
 
 const collapsed = ref(false)
 const llmConfigured = ref(false)
@@ -35,16 +29,6 @@ onMounted(async () => {
     llmConfigured.value = status.configured
   } catch {
     // 静默处理
-  }
-})
-
-const themeIcon = computed(() => BulbOutlined)
-
-const themeText = computed(() => {
-  switch (themeStore.mode) {
-    case 'light': return '浅色'
-    case 'dark': return '深色'
-    default: return '跟随系统'
   }
 })
 
@@ -61,6 +45,7 @@ const menuItems = computed(() => {
     items.push(
       { key: '/manage', icon: TeamOutlined, label: '管理' },
       { key: '/upload', icon: UploadOutlined, label: '上传' },
+      { key: '/test-manage', icon: FileTextOutlined, label: '组卷管理' },
       { key: '/student-data', icon: LineChartOutlined, label: '学生数据' },
     )
   }
@@ -76,10 +61,6 @@ function handleLogout() {
   authStore.logout()
   router.push('/login')
 }
-
-function handleGradeChange(grade: string) {
-  gradeStore.setGrade(grade)
-}
 </script>
 
 <template>
@@ -91,47 +72,11 @@ function handleGradeChange(grade: string) {
         <span class="logo">数学题库</span>
       </div>
 
-      <div class="header-center">
-        <a-dropdown>
-          <a-button>
-            {{ gradeStore.currentGrade }}
-            <template #icon><DownOutlined /></template>
-          </a-button>
-          <template #overlay>
-            <a-menu @click="({ key }: { key: string }) => handleGradeChange(key)">
-              <a-menu-item v-for="grade in GRADES" :key="grade">
-                {{ grade }}
-              </a-menu-item>
-            </a-menu>
-          </template>
-        </a-dropdown>
-      </div>
-
       <div class="header-right">
         <a-tooltip>
           <template #title>AI: {{ llmConfigured ? '已配置' : '未配置' }}</template>
           <a-badge :status="llmConfigured ? 'success' : 'default'" text="AI" />
         </a-tooltip>
-
-        <a-dropdown>
-          <a-button type="text">
-            <component :is="themeIcon" />
-            {{ themeText }}
-          </a-button>
-          <template #overlay>
-            <a-menu @click="({ key }: { key: string }) => themeStore.setMode(key as any)">
-              <a-menu-item key="light">
-                <SettingOutlined /> 浅色
-              </a-menu-item>
-              <a-menu-item key="dark">
-                <SettingOutlined /> 深色
-              </a-menu-item>
-              <a-menu-item key="system">
-                <SettingOutlined /> 跟随系统
-              </a-menu-item>
-            </a-menu>
-          </template>
-        </a-dropdown>
 
         <a-dropdown v-if="authStore.isAuthenticated">
           <a-button type="text">
@@ -222,11 +167,6 @@ function handleGradeChange(grade: string) {
   font-size: 18px;
   font-weight: bold;
   color: var(--color-primary);
-}
-
-.header-center {
-  display: flex;
-  align-items: center;
 }
 
 .header-right {

@@ -16,7 +16,7 @@ from backend.models.user import User
 from backend.models.question import Question
 from backend.schemas.question import (
     QuestionUpdate, QuestionResponse, QuestionListResponse,
-    BatchDeleteRequest, BatchUpdateRequest
+    BatchCreateRequest, BatchDeleteRequest, BatchUpdateRequest
 )
 from backend.config import settings
 
@@ -43,12 +43,7 @@ async def get_questions(
     if tag:
         query = query.where(Question.tags.contains(tag))
     if keyword:
-        query = query.where(
-            or_(
-                Question.title.contains(keyword),
-                Question.content.contains(keyword)
-            )
-        )
+        query = query.where(Question.content.contains(keyword))
     if difficulty:
         query = query.where(Question.difficulty == difficulty)
     if grade:
@@ -74,6 +69,64 @@ async def get_questions(
         per_page=per_page,
         pages=(total + per_page - 1) // per_page
     )
+
+
+@router.post("", response_model=dict)
+async def create_question(
+    content: str = Form(default=''),
+    tags: str = Form(default='[]'),
+    difficulty: int = Form(default=1),
+    source: str = Form(default=''),
+    answer_analysis: str = Form(default=''),
+    grade: str = Form(default='初一'),
+    category: str = Form(default=''),
+    paper_id: Optional[int] = Form(default=None),
+    paper_question_number: Optional[int] = Form(default=None),
+    image: Optional[UploadFile] = File(default=None),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_teacher)
+):
+    """创建新题目"""
+    # 检查是否已存在相同内容的题目
+    if content and content.strip():
+        existing = await db.execute(
+            select(Question).where(Question.content == content.strip())
+        )
+        existing_question = existing.scalar_one_or_none()
+        if existing_question:
+            return {
+                "id": existing_question.id,
+                "message": "已存在相同题目",
+                "duplicate": True
+            }
+
+    image_path = ""
+
+    # 处理图片上传
+    if image and image.filename:
+        ext = image.filename.rsplit(".", 1)[-1].lower()
+        if ext in ALLOWED_IMAGE_EXTENSIONS:
+            filename = f"{uuid.uuid4().hex}_{image.filename}"
+            upload_path = os.path.join(settings.UPLOAD_DIR, filename)
+            os.makedirs(os.path.dirname(upload_path), exist_ok=True)
+            with open(upload_path, "wb") as f:
+                content_bytes = await image.read()
+                f.write(content_bytes)
+            image_path = f"uploads/{filename}"
+
+    question = Question(
+        content=content, tags=tags, difficulty=difficulty,
+        source=source, image_path=image_path, answer_analysis=answer_analysis,
+        grade=grade, category=category,
+        paper_id=paper_id,
+        paper_question_number=paper_question_number,
+        created_by=current_user.id
+    )
+    db.add(question)
+    await db.commit()
+    await db.refresh(question)
+
+    return {"id": question.id, "message": "题目已添加"}
 
 
 @router.get("/batch")
@@ -102,6 +155,127 @@ async def get_questions_batch(
     return {"questions": ordered}
 
 
+@router.post("/batch-create", response_model=dict)
+async def batch_create_questions(
+    data: BatchCreateRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_teacher)
+):
+    """批量创建题目"""
+    if not data.questions:
+        raise HTTPException(status_code=400, detail="没有要创建的题目")
+
+    created_ids = []
+    skipped_count = 0
+
+    for item in data.questions:
+        # 检查是否已存在相同内容的题目
+        if item.content and item.content.strip():
+            existing = await db.execute(
+                select(Question).where(Question.content == item.content.strip())
+            )
+            if existing.scalar_one_or_none():
+                skipped_count += 1
+                continue
+
+        question = Question(
+            content=item.content,
+            answer_analysis=item.answer_analysis,
+            grade=item.grade,
+            category=item.category,
+            difficulty=item.difficulty,
+            image_path=item.image_path,
+            created_by=current_user.id
+        )
+        db.add(question)
+        await db.flush()  # 获取 ID
+        created_ids.append(question.id)
+
+    await db.commit()
+
+    message = f"已创建 {len(created_ids)} 道题目"
+    if skipped_count > 0:
+        message += f"，跳过 {skipped_count} 道重复题目"
+
+    return {"message": message, "ids": created_ids, "skipped": skipped_count}
+
+
+@router.get("/check-duplicates", response_model=dict)
+async def check_duplicates(
+    db: AsyncSession = Depends(get_db)
+):
+    """检查重复题目数量（无需认证）"""
+    from sqlalchemy import func
+
+    # 统计重复题目
+    subquery = (
+        select(
+            Question.content,
+            func.count(Question.id).label('count'),
+            func.min(Question.id).label('keep_id')
+        )
+        .where(Question.content != '')
+        .group_by(Question.content)
+        .having(func.count(Question.id) > 1)
+    )
+
+    result = await db.execute(subquery)
+    duplicates = result.all()
+
+    total_duplicates = sum(count - 1 for _, count, _ in duplicates)
+
+    return {
+        "duplicate_groups": len(duplicates),
+        "total_duplicates": total_duplicates,
+        "message": f"发现 {len(duplicates)} 组重复题目，共 {total_duplicates} 道可清理"
+    }
+
+
+@router.post("/deduplicate", response_model=dict)
+async def deduplicate_questions(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """清理重复题目（保留最早创建的）"""
+    from sqlalchemy import func
+
+    # 找出所有重复的 content（保留每组中 id 最小的）
+    subquery = (
+        select(
+            Question.content,
+            func.min(Question.id).label('min_id')
+        )
+        .where(Question.content != '')
+        .group_by(Question.content)
+        .having(func.count(Question.id) > 1)
+    )
+
+    result = await db.execute(subquery)
+    duplicates = result.all()
+
+    deleted_count = 0
+    for content, min_id in duplicates:
+        # 删除同 content 中 id 较大的记录
+        delete_result = await db.execute(
+            select(Question).where(
+                Question.content == content,
+                Question.id != min_id
+            )
+        )
+        questions_to_delete = delete_result.scalars().all()
+        for q in questions_to_delete:
+            await db.delete(q)
+            deleted_count += 1
+
+    await db.commit()
+
+    return {
+        "message": f"已清理 {deleted_count} 道重复题目",
+        "deleted_count": deleted_count,
+        "duplicate_groups": len(duplicates)
+    }
+
+
 @router.get("/{q_id}", response_model=QuestionResponse)
 async def get_question(
     q_id: int,
@@ -113,54 +287,6 @@ async def get_question(
     if not question:
         raise NotFoundException("题目")
     return QuestionResponse(**question.to_dict())
-
-
-@router.post("/{q_id}", response_model=dict)
-async def create_question(
-    q_id: int = None,
-    title: str = Form(default=''),
-    content: str = Form(default=''),
-    tags: str = Form(default='[]'),
-    difficulty: int = Form(default=1),
-    source: str = Form(default=''),
-    answer: str = Form(default=''),
-    analysis: str = Form(default=''),
-    grade: str = Form(default='初一'),
-    category: str = Form(default=''),
-    paper_id: Optional[int] = Form(default=None),
-    paper_question_number: Optional[int] = Form(default=None),
-    image: Optional[UploadFile] = File(default=None),
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_teacher)
-):
-    """创建新题目"""
-    image_path = ""
-
-    # 处理图片上传
-    if image and image.filename:
-        ext = image.filename.rsplit(".", 1)[-1].lower()
-        if ext in ALLOWED_IMAGE_EXTENSIONS:
-            filename = f"{uuid.uuid4().hex}_{image.filename}"
-            upload_path = os.path.join(settings.UPLOAD_DIR, filename)
-            os.makedirs(os.path.dirname(upload_path), exist_ok=True)
-            with open(upload_path, "wb") as f:
-                content_bytes = await image.read()
-                f.write(content_bytes)
-            image_path = f"uploads/{filename}"
-
-    question = Question(
-        title=title, content=content, tags=tags, difficulty=difficulty,
-        source=source, image_path=image_path, answer=answer, analysis=analysis,
-        grade=grade, category=category,
-        paper_id=paper_id,
-        paper_question_number=paper_question_number,
-        created_by=current_user.id
-    )
-    db.add(question)
-    await db.commit()
-    await db.refresh(question)
-
-    return {"id": question.id, "message": "题目已添加"}
 
 
 @router.put("/{q_id}", response_model=dict)

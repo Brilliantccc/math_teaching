@@ -21,7 +21,8 @@ from backend.api import api_router
 async def lifespan(app: FastAPI):
     """应用生命周期"""
     # 确保数据目录存在
-    os.makedirs("./backend/data", exist_ok=True)
+    data_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data')
+    os.makedirs(data_dir, exist_ok=True)
     # 启动时初始化数据库
     await init_db()
     # 确保上传目录存在

@@ -19,14 +19,12 @@ class Question(Base):
     __tablename__ = 'questions'
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    title: Mapped[str] = mapped_column(Text, default='')
     content: Mapped[str] = mapped_column(Text, default='')
     tags: Mapped[str] = mapped_column(Text, default='[]')  # JSON array
     difficulty: Mapped[int] = mapped_column(Integer, default=1)
     source: Mapped[str] = mapped_column(Text, default='')
     image_path: Mapped[str] = mapped_column(Text, default='')
-    answer: Mapped[str] = mapped_column(Text, default='')
-    analysis: Mapped[str] = mapped_column(Text, default='')
+    answer_analysis: Mapped[str] = mapped_column(Text, default='')  # 答案与解析合并在
     grade: Mapped[str] = mapped_column(Text, default='初一')
     category: Mapped[str] = mapped_column(Text, default='')
     paper_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey('papers.id'), nullable=True)
@@ -41,14 +39,12 @@ class Question(Base):
     def to_dict(self):
         return {
             "id": self.id,
-            "title": self.title,
             "content": self.content,
             "tags": self.tags,
             "difficulty": self.difficulty,
             "source": self.source,
             "image_path": self.image_path,
-            "answer": self.answer,
-            "analysis": self.analysis,
+            "answer_analysis": self.answer_analysis,
             "grade": self.grade,
             "category": self.category,
             "paper_id": self.paper_id,

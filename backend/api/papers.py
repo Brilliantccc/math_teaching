@@ -235,7 +235,7 @@ async def add_paper_question(
         content=data.content,
         tags=data.tags,
         difficulty=data.difficulty,
-        answer=data.answer,
+        answer_analysis=data.answer_analysis,
         paper_question_number=data.paper_question_number,
         grade=data.grade,
         category=data.category,

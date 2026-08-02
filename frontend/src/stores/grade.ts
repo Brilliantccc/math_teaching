@@ -3,7 +3,7 @@
 import { defineStore } from 'pinia'
 import { ref, watch } from 'vue'
 
-export const GRADES = ['初一', '初二', '初三', '高一', '高二', '高三']
+export const GRADES = ['全部', '初一', '初二', '初三', '高一', '高二', '高三']
 
 export const useGradeStore = defineStore('grade', () => {
   const currentGrade = ref(localStorage.getItem('grade') || '初一')
@@ -15,6 +15,11 @@ export const useGradeStore = defineStore('grade', () => {
     }
   }
 
+  // 获取用于API的年级参数（全部返回空字符串）
+  function getGradeParam() {
+    return currentGrade.value === '全部' ? '' : currentGrade.value
+  }
+
   // 监听变化
   watch(currentGrade, (newGrade) => {
     localStorage.setItem('grade', newGrade)
@@ -23,6 +28,7 @@ export const useGradeStore = defineStore('grade', () => {
   return {
     currentGrade,
     setGrade,
+    getGradeParam,
     grades: GRADES
   }
 })

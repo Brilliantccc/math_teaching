@@ -29,6 +29,28 @@ body {
   line-height: 1.8;
 }
 
+/* KaTeX line-height fix - prevent inherited line-height from breaking sqrt SVG layout */
+.latex-text .katex {
+  line-height: normal;
+}
+
+/* KaTeX 根号 SVG 显示修复 - 解决 overflow 问题 */
+.latex-text .katex .vlist-r,
+.latex-text .katex .vlist {
+  overflow: visible;
+}
+.latex-text .katex .hide-tail {
+  overflow: visible !important;
+}
+
+/* 修复 KaTeX 与全局 box-sizing: border-box 的冲突 */
+.katex *,
+.katex *::before,
+.katex *::after {
+  box-sizing: content-box !important;
+}
+
+/* KaTeX 行内样式 */
 .latex-text .katex-display {
   margin: 8px 0;
   overflow-x: auto;
@@ -37,6 +59,18 @@ body {
 
 .latex-text .katex {
   font-size: 1.05em;
+}
+
+/* KaTeX 错误样式 */
+.katex-error {
+  color: #f5222d;
+  background: #fff2f0;
+  border: 1px solid #ffccc7;
+  border-radius: 4px;
+  padding: 2px 6px;
+  font-family: monospace;
+  font-size: 0.9em;
+  word-break: break-all;
 }
 
 /* 标签样式 */

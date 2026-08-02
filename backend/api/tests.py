@@ -51,12 +51,32 @@ async def create_test(
     name = data.name or f"试卷_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
     question_ids = json.dumps(data.question_ids, ensure_ascii=False)
 
-    test = Test(name=name, question_ids=question_ids, created_by=current_user.id)
+    test = Test(
+        name=name,
+        question_ids=question_ids,
+        score_per_question=data.score_per_question,
+        created_by=current_user.id
+    )
     db.add(test)
     await db.commit()
     await db.refresh(test)
 
     return {"id": test.id, "message": "试卷已保存"}
+
+
+@router.delete("/{t_id}")
+async def delete_test(
+    t_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """删除组卷"""
+    test = await db.get(Test, t_id)
+    if not test:
+        raise NotFoundException("试卷")
+    await db.delete(test)
+    await db.commit()
+    return {"message": "已删除"}
 
 
 @router.get("/{t_id}", response_model=TestResponse)
@@ -142,7 +162,11 @@ async def export_test_pdf(
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
 
     try:
-        generate_test_pdf(questions_data, output_path, title=test.name or "数学试卷")
+        generate_test_pdf(
+            questions_data, output_path,
+            title=test.name or "数学试卷",
+            score_per_question=test.score_per_question or 10
+        )
         return FileResponse(
             output_path,
             media_type="application/pdf",

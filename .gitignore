@@ -46,6 +46,11 @@ Thumbs.db
 # 环境变量
 .env
 
+# 启动脚本（本地使用，不上传）
+start.ps1
+启动题库.bat
+启动说明.md
+
 # Impeccable / Agent configs
 .impeccable/
 .agents/

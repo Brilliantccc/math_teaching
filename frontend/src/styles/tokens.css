@@ -4,77 +4,77 @@
  */
 
 :root {
-  /* === 品牌色 (Primary) === */
-  --color-primary: #2563eb;
-  --color-primary-hover: #1d4ed8;
-  --color-primary-light: #3b82f6;
-  --color-primary-accent: #4a90d9;
-  --color-primary-bg: rgba(37, 99, 235, 0.08);
-  --color-primary-border: rgba(37, 99, 235, 0.3);
+  /* === 品牌色 (Primary) - VS Code 风格 === */
+  --color-primary: #007acc;
+  --color-primary-hover: #0098ff;
+  --color-primary-light: #1c8cd9;
+  --color-primary-accent: #3794ff;
+  --color-primary-bg: rgba(0, 122, 204, 0.08);
+  --color-primary-border: rgba(0, 122, 204, 0.3);
 
-  /* === 语义色 (Semantic) === */
+  /* === 语义色 (Semantic) - VS Code 风格 === */
   /* 成功/正确 */
-  --color-success: #16a34a;
-  --color-success-hover: #15803d;
-  --color-success-text: #166534;
-  --color-success-bg: #dcfce7;
+  --color-success: #388a34;
+  --color-success-hover: #2c7a28;
+  --color-success-text: #2c7a28;
+  --color-success-bg: #dff6dd;
 
   /* 错误/危险 */
-  --color-error: #dc2626;
-  --color-error-hover: #b91c1c;
-  --color-error-text: #991b1b;
-  --color-error-bg: #fee2e2;
+  --color-error: #f44747;
+  --color-error-hover: #d32f2f;
+  --color-error-text: #c72e2e;
+  --color-error-bg: #fde7e9;
 
   /* 警告 */
-  --color-warning: #f59e0b;
-  --color-warning-text: #854d0e;
-  --color-warning-bg: #fef9c3;
+  --color-warning: #cca700;
+  --color-warning-text: #856404;
+  --color-warning-bg: #fff8e1;
 
-  /* === 中性色 (Neutral) === */
-  --color-bg-page: #f5f7fa;
+  /* === 中性色 (Neutral) - VS Code 风格 === */
+  --color-bg-page: #f3f3f3;
   --color-bg-card: #ffffff;
-  --color-bg-hover: #f3f4f6;
-  --color-bg-active: #e5e7eb;
+  --color-bg-hover: #e8e8e8;
+  --color-bg-active: #d4d4d4;
 
   /* 文本 */
-  --color-text-primary: #1e293b;
-  --color-text-body: #333333;
-  --color-text-secondary: #374151;
-  --color-text-muted: #6b7280;
-  --color-text-placeholder: #9ca3af;
+  --color-text-primary: #333333;
+  --color-text-body: #444444;
+  --color-text-secondary: #616161;
+  --color-text-muted: #888888;
+  --color-text-placeholder: #999999;
 
   /* 边框 */
-  --color-border: #e5e7eb;
-  --color-border-input: #d1d5db;
+  --color-border: #e1e1e1;
+  --color-border-input: #cecece;
   --color-border-focus: var(--color-primary);
 
   /* === 标签色 (Tag) === */
-  --color-tag-bg: #e0e7ff;
-  --color-tag-text: #3730a3;
+  --color-tag-bg: rgba(0, 122, 204, 0.1);
+  --color-tag-text: #007acc;
 
   /* 年级标签 */
-  --color-grade-bg: #dbeafe;
-  --color-grade-text: #1e40af;
+  --color-grade-bg: rgba(0, 122, 204, 0.1);
+  --color-grade-text: #007acc;
 
   /* 分类标签 */
-  --color-category-bg: #fce7f3;
-  --color-category-text: #9d174d;
+  --color-category-bg: rgba(187, 127, 238, 0.1);
+  --color-category-text: #8b5cf6;
 
   /* === 提示色 (Toast) === */
-  --color-toast-bg: #1f2937;
+  --color-toast-bg: #333333;
   --color-toast-text: #ffffff;
 
   /* === 阴影 (Shadow) === */
-  --shadow-rest: 0 1px 3px rgba(0, 0, 0, 0.08);
-  --shadow-hover: 0 2px 8px rgba(0, 0, 0, 0.1);
-  --shadow-focus: 0 0 0 3px rgba(37, 99, 235, 0.1);
-  --shadow-modal: 0 4px 24px rgba(0, 0, 0, 0.15);
+  --shadow-rest: 0 1px 3px rgba(0, 0, 0, 0.1);
+  --shadow-hover: 0 4px 12px rgba(0, 0, 0, 0.15);
+  --shadow-focus: 0 0 0 3px rgba(0, 122, 204, 0.2);
+  --shadow-modal: 0 8px 32px rgba(0, 0, 0, 0.2);
 
   /* === 圆角 (Radius) === */
   --radius-sm: 4px;
-  --radius-md: 8px;
-  --radius-lg: 12px;
-  --radius-xl: 16px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+  --radius-xl: 12px;
   --radius-full: 999px;
 
   /* === 间距 (Spacing) === */
@@ -93,23 +93,4 @@
   --transition-fast: 0.15s ease;
   --transition-normal: 0.2s ease;
   --transition-slow: 0.3s ease;
-}
-
-/* 深色模式 */
-[data-theme='dark'] {
-  --color-bg-page: #0f172a;
-  --color-bg-card: #1e293b;
-  --color-bg-hover: #334155;
-  --color-bg-active: #475569;
-
-  --color-text-primary: #f1f5f9;
-  --color-text-body: #e2e8f0;
-  --color-text-secondary: #cbd5e1;
-  --color-text-muted: #94a3b8;
-
-  --color-border: #334155;
-  --color-border-input: #475569;
-
-  --shadow-rest: 0 1px 3px rgba(0, 0, 0, 0.3);
-  --shadow-hover: 0 2px 8px rgba(0, 0, 0, 0.4);
 }

@@ -20,6 +20,7 @@ class Test(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     name: Mapped[str] = mapped_column(Text, nullable=False)
     question_ids: Mapped[str] = mapped_column(Text, default='[]')  # JSON array
+    score_per_question: Mapped[int] = mapped_column(Integer, default=10)
     created_by: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey('users.id'), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
@@ -31,6 +32,7 @@ class Test(Base):
             "id": self.id,
             "name": self.name,
             "question_ids": self.question_ids,
+            "score_per_question": self.score_per_question,
             "created_by": self.created_by,
             "created_at": self.created_at.isoformat() if self.created_at else None,
         }

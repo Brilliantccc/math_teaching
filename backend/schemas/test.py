@@ -8,6 +8,7 @@ class TestCreate(BaseModel):
     """创建组卷请求"""
     name: Optional[str] = None
     question_ids: List[int] = []
+    score_per_question: int = 10
 
 
 class TestResponse(BaseModel):
@@ -15,6 +16,7 @@ class TestResponse(BaseModel):
     id: int
     name: str
     question_ids: str
+    score_per_question: int = 10
     created_by: Optional[int] = None
     created_at: Optional[str] = None
     questions: Optional[List[dict]] = None

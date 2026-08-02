@@ -2,6 +2,106 @@
 
 from typing import List, Dict, Any
 import os
+import re
+
+
+def _render_latex_to_image(latex_str: str, output_dir: str) -> str:
+    """尝试用 matplotlib 将 LaTeX 渲染为图片，返回图片路径"""
+    try:
+        import matplotlib
+        matplotlib.use('Agg')
+        import matplotlib.pyplot as plt
+        from matplotlib import mathtext
+        import hashlib
+
+        # 生成唯一文件名
+        md5 = hashlib.md5(latex_str.encode()).hexdigest()[:8]
+        img_path = os.path.join(output_dir, f"latex_{md5}.png")
+
+        if os.path.exists(img_path):
+            return img_path
+
+        # 替换 matplotlib 不支持的 LaTeX 命令
+        rendered = latex_str
+        rendered = rendered.replace(r'\le', r'\leq')
+        rendered = rendered.replace(r'\ge', r'\geq')
+
+        fig = plt.figure(figsize=(0.01, 0.01))
+        fig.patch.set_alpha(0)
+        text = fig.text(0, 0, f"${rendered}$", fontsize=12, color='black')
+        fig.savefig(img_path, dpi=150, bbox_inches='tight', pad_inches=0.02, transparent=True)
+        plt.close(fig)
+
+        return img_path
+    except Exception:
+        return ""
+
+
+def _parse_answer_analysis(answer_analysis: str) -> tuple:
+    """解析 answer_analysis 字段，返回 (答案, 解析)"""
+    if not answer_analysis:
+        return "", ""
+    if "---解析---" in answer_analysis:
+        parts = answer_analysis.split("---解析---", 1)
+        return parts[0].strip(), parts[1].strip()
+    return answer_analysis.strip(), ""
+
+
+def _process_latex_in_text(text: str, latex_dir: str) -> str:
+    """处理文本中的 LaTeX 公式，将 $...$ 转换为可显示的格式"""
+    if not text:
+        return ""
+
+    # 修复双反斜杠：\\\\times -> \\times
+    text = re.sub(r'\\\\([a-zA-Z]+)', r'\\\1', text)
+
+    # 替换换行符
+    text = text.replace("\n", "<br/>")
+
+    # 处理 $$...$$ 块级公式
+    def replace_block(match):
+        latex = match.group(1).strip()
+        img_path = _render_latex_to_image(latex, latex_dir)
+        if img_path and os.path.exists(img_path):
+            return f'<img src="{img_path}" height="20"/>'
+        return f'<i>{latex}</i>'
+
+    text = re.sub(r'\$\$(.*?)\$\$', replace_block, text, flags=re.DOTALL)
+
+    # 处理 $...$ 行内公式（支持嵌套花括号）
+    def replace_inline(match):
+        latex = match.group(1).strip()
+        img_path = _render_latex_to_image(latex, latex_dir)
+        if img_path and os.path.exists(img_path):
+            return f'<img src="{img_path}" height="16"/>'
+        return f'<i>{latex}</i>'
+
+    # 使用更宽松的匹配：$ 后跟任意内容直到下一个 $（不跨行）
+    result = []
+    i = 0
+    while i < len(text):
+        if text[i] == '$':
+            # 找到结束的 $
+            j = i + 1
+            while j < len(text) and text[j] != '$' and text[j] != '<br/>':
+                j += 1
+            if j < len(text) and text[j] == '$':
+                latex = text[i+1:j].strip()
+                if latex:
+                    img_path = _render_latex_to_image(latex, latex_dir)
+                    if img_path and os.path.exists(img_path):
+                        result.append(f'<img src="{img_path}" height="16"/>')
+                    else:
+                        result.append(f'<i>{latex}</i>')
+                i = j + 1
+            else:
+                result.append(text[i])
+                i += 1
+        else:
+            result.append(text[i])
+            i += 1
+
+    return ''.join(result)
 
 
 def generate_test_pdf(
@@ -9,13 +109,15 @@ def generate_test_pdf(
     output_path: str,
     title: str = "数学试卷",
     show_answer: bool = False,
+    score_per_question: int = 10,
 ) -> str:
     """生成试卷PDF"""
     try:
         from reportlab.lib.pagesizes import A4
         from reportlab.lib import colors
-        from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
+        from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Image
         from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+        from reportlab.lib.units import mm
         from reportlab.pdfbase import pdfmetrics
         from reportlab.pdfbase.ttfonts import TTFont
     except ImportError:
@@ -32,23 +134,86 @@ def generate_test_pdf(
             pass
 
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
-    doc = SimpleDocTemplate(output_path, pagesize=A4)
+
+    # 创建临时目录用于 LaTeX 图片
+    latex_dir = os.path.join(os.path.dirname(output_path), "latex_tmp")
+    os.makedirs(latex_dir, exist_ok=True)
+
+    doc = SimpleDocTemplate(output_path, pagesize=A4, topMargin=20*mm, bottomMargin=20*mm)
     styles = getSampleStyleSheet()
 
-    title_style = ParagraphStyle("CustomTitle", parent=styles["Title"], fontName=font_name, fontSize=18, spaceAfter=20)
-    question_style = ParagraphStyle("Question", parent=styles["Normal"], fontName=font_name, fontSize=11, leading=16, spaceBefore=10, spaceAfter=5)
-    answer_style = ParagraphStyle("Answer", parent=styles["Normal"], fontName=font_name, fontSize=10, textColor=colors.grey, spaceBefore=5)
+    # 样式定义
+    title_style = ParagraphStyle(
+        "CustomTitle", parent=styles["Title"],
+        fontName=font_name, fontSize=20, spaceAfter=6, alignment=1
+    )
+    meta_style = ParagraphStyle(
+        "Meta", parent=styles["Normal"],
+        fontName=font_name, fontSize=11, alignment=1, textColor=colors.HexColor("#666666"), spaceAfter=16
+    )
+    question_style = ParagraphStyle(
+        "Question", parent=styles["Normal"],
+        fontName=font_name, fontSize=12, leading=18, spaceBefore=12, spaceAfter=4
+    )
+    score_style = ParagraphStyle(
+        "Score", parent=styles["Normal"],
+        fontName=font_name, fontSize=10, textColor=colors.HexColor("#888888"), spaceBefore=0, spaceAfter=8
+    )
+    answer_style = ParagraphStyle(
+        "Answer", parent=styles["Normal"],
+        fontName=font_name, fontSize=10, textColor=colors.HexColor("#333333"),
+        spaceBefore=6, spaceAfter=4, leftIndent=20
+    )
+    answer_analysis_style = ParagraphStyle(
+        "AnswerAnalysis", parent=styles["Normal"],
+        fontName=font_name, fontSize=10, textColor=colors.HexColor("#555555"),
+        spaceBefore=4, spaceAfter=8, leftIndent=20, backColor=colors.HexColor("#f5f5f5")
+    )
+    footer_style = ParagraphStyle(
+        "Footer", parent=styles["Normal"],
+        fontName=font_name, fontSize=10, alignment=1, textColor=colors.HexColor("#999999"), spaceBefore=20
+    )
 
-    story = [Paragraph(title, title_style), Spacer(1, 10)]
+    total_score = len(questions) * score_per_question
+
+    story = []
+
+    # 试卷标题
+    story.append(Paragraph(title, title_style))
+
+    # 元信息
+    grade = questions[0].get("grade", "") if questions else ""
+    meta_text = f"年级：{grade}　　时间：90分钟　　总分：{total_score}分"
+    story.append(Paragraph(meta_text, meta_style))
+
+    # 分割线
+    story.append(Spacer(1, 4))
+
+    # 题目
     for i, q in enumerate(questions, 1):
-        content = q.get("content", "").replace("\n", "<br/>")
-        story.append(Paragraph(f"{i}. {content}", question_style))
+        content = _process_latex_in_text(q.get("content", ""), latex_dir)
+        story.append(Paragraph(f"<b>{i}.</b> {content}", question_style))
+        story.append(Paragraph(f"（{score_per_question}分）", score_style))
+
+        # 答题区域（空白行）
+        if not show_answer:
+            story.append(Spacer(1, 24))
+
+        # 答案与解析
         if show_answer:
-            if q.get("answer"):
-                story.append(Paragraph(f"答案：{q['answer']}", answer_style))
-            if q.get("analysis"):
-                story.append(Paragraph(f"解析：{q['analysis']}", answer_style))
-        story.append(Spacer(1, 5))
+            answer_analysis = q.get("answer_analysis", "")
+            answer, analysis = _parse_answer_analysis(answer_analysis)
+            if answer:
+                story.append(Paragraph(f"<b>答案：</b>{answer}", answer_style))
+            if analysis:
+                analysis_processed = _process_latex_in_text(analysis, latex_dir)
+                story.append(Paragraph(f"<b>解析：</b>{analysis_processed}", answer_analysis_style))
+
+        story.append(Spacer(1, 8))
+
+    # 试卷底部
+    story.append(Spacer(1, 20))
+    story.append(Paragraph("— 试卷结束 —", footer_style))
 
     doc.build(story)
     return output_path

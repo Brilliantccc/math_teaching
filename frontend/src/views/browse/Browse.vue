@@ -4,8 +4,8 @@ import { api } from '@/api'
 import { useGradeStore } from '@/stores'
 import type { Question, QuestionListResponse } from '@/types'
 import { SearchOutlined, FileSearchOutlined } from '@ant-design/icons-vue'
-import SkeletonCard from '@/components/SkeletonCard.vue'
-import LatexText from '@/components/LatexText.vue'
+import SkeletonCard from '@/components/common/SkeletonCard.vue'
+import LatexText from '@/components/display/LatexText.vue'
 
 const gradeStore = useGradeStore()
 
@@ -31,7 +31,7 @@ async function loadQuestions() {
       params: {
         page: page.value,
         per_page: perPage.value,
-        grade: gradeStore.currentGrade,
+        grade: gradeStore.getGradeParam(),
         keyword: filters.value.keyword,
         category: filters.value.category,
         difficulty: filters.value.difficulty
@@ -146,12 +146,13 @@ watch(() => gradeStore.currentGrade, () => {
         <a-spin :spinning="loading">
           <div v-for="q in questions" :key="q.id" class="question-card">
             <div class="question-header">
-              <span class="question-title">{{ q.title || '（无标题）' }}</span>
+              <span class="question-title">
+                <LatexText :content="q.content || '（无内容）'" />
+              </span>
               <a-tag :color="getDifficultyColor(q.difficulty)">
                 {{ getDifficultyText(q.difficulty) }}
               </a-tag>
             </div>
-            <div class="question-content"><LatexText :content="q.content" /></div>
             <div class="question-footer">
               <span class="grade">{{ q.grade }}</span>
               <span v-if="q.category" class="category">{{ q.category }}</span>
@@ -188,6 +189,17 @@ watch(() => gradeStore.currentGrade, () => {
 .browse {
   max-width: 900px;
   margin: 0 auto;
+}
+
+@media (max-width: 768px) {
+  .filters {
+    flex-direction: column;
+  }
+
+  .filters .ant-input-search,
+  .filters .ant-select {
+    width: 100% !important;
+  }
 }
 
 .header {

@@ -2,7 +2,6 @@
 
 import os
 import json
-import uuid
 import tempfile
 import shutil
 import sqlite3
@@ -22,8 +21,6 @@ from backend.models.paper import Paper
 from backend.config import settings
 
 router = APIRouter()
-
-ALLOWED_IMAGE_EXTENSIONS = {'jpg', 'jpeg', 'png', 'gif', 'bmp'}
 
 
 # ─── 常量数据 ─────────────────────────────────────────────
@@ -240,39 +237,6 @@ async def import_backup(
             os.remove(temp_path)
         if os.path.exists(temp_dir):
             os.rmdir(temp_dir)
-
-
-# ─── OCR ─────────────────────────────────────────────
-
-@router.post("/ocr")
-async def ocr_recognize(
-    image: UploadFile = File(...),
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user)
-):
-    """OCR文字识别"""
-    if not image.filename:
-        raise HTTPException(status_code=400, detail="无效的文件")
-
-    ext = image.filename.rsplit(".", 1)[-1].lower()
-    if ext not in ALLOWED_IMAGE_EXTENSIONS:
-        raise HTTPException(status_code=400, detail="不支持的图片格式")
-
-    filename = f"ocr_{uuid.uuid4().hex}_{image.filename}"
-    upload_path = os.path.join(settings.UPLOAD_DIR, filename)
-    os.makedirs(os.path.dirname(upload_path), exist_ok=True)
-
-    with open(upload_path, "wb") as f:
-        content = await image.read()
-        f.write(content)
-
-    try:
-        from backend.utils.ocr import recognize_question
-        result = recognize_question(upload_path)
-        return result
-    finally:
-        if os.path.exists(upload_path):
-            os.remove(upload_path)
 
 
 # ─── 题目导入导出 ───────────────────────────────────────

@@ -25,7 +25,9 @@ def get_password_hash(password: str) -> str:
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:
     """创建访问令牌"""
     to_encode = data.copy()
-    expire = datetime.utcnow() + (expires_delta or timedelta(hours=24))
+    # 使用配置中的过期时间，默认 30 天
+    expire_hours = settings.JWT_EXPIRE_HOURS or 720  # 30 天 = 720 小时
+    expire = datetime.utcnow() + (expires_delta or timedelta(hours=expire_hours))
     to_encode.update({"exp": expire})
     encoded_jwt = jwt.encode(to_encode, settings.SECRET_KEY, algorithm="HS256")
     return encoded_jwt

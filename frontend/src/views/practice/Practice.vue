@@ -3,8 +3,8 @@ import { ref, reactive, computed } from 'vue'
 import { api } from '@/api'
 import { useGradeStore } from '@/stores'
 import { message } from 'ant-design-vue'
-import CelebrationOverlay from '@/components/CelebrationOverlay.vue'
-import LatexText from '@/components/LatexText.vue'
+import CelebrationOverlay from '@/components/common/CelebrationOverlay.vue'
+import LatexText from '@/components/display/LatexText.vue'
 
 const gradeStore = useGradeStore()
 
@@ -19,7 +19,7 @@ const currentIndex = ref(0)
 const currentQuestion = ref<any>(null)
 const userAnswer = ref('')
 const showResult = ref(false)
-const result = ref({ is_correct: false, correct_answer: '', analysis: '' })
+const result = ref({ is_correct: false, answer_analysis: '' })
 const showCelebration = ref(false)
 const celebrationType = ref<'success' | 'encouragement' | 'milestone'>('success')
 
@@ -74,7 +74,6 @@ async function submitAnswer() {
     result.value = response.data
     showResult.value = true
 
-    // 显示庆祝动画
     if (result.value.is_correct) {
       celebrationType.value = 'success'
       showCelebration.value = true
@@ -118,7 +117,7 @@ function handleCelebrationDone() {
     <!-- 配置面板 -->
     <div v-if="!practiceStarted" class="config-panel">
       <div class="config-header">
-        <span class="config-icon">📚</span>
+        <span class="config-icon">📝</span>
         <span>选择练习内容</span>
       </div>
       <a-form layout="inline">
@@ -181,15 +180,12 @@ function handleCelebrationDone() {
           <div v-if="showResult" class="result-area">
             <a-alert
               :type="result.is_correct ? 'success' : 'warning'"
-              :message="result.is_correct ? '🎉 回答正确！' : '💪 回答错误，继续加油！'"
+              :message="result.is_correct ? '🎉 回答正确！' : '😊 回答错误，继续加油！'"
               show-icon
               style="margin-bottom: 16px"
             />
-            <div class="correct-answer">
-              <strong>正确答案：</strong><LatexText :content="result.correct_answer" />
-            </div>
-            <div v-if="result.analysis" class="analysis">
-              <strong>解析：</strong><LatexText :content="result.analysis" />
+            <div class="answer-analysis-display">
+              <LatexText :content="result.answer_analysis" />
             </div>
           </div>
         </Transition>
@@ -292,19 +288,12 @@ function handleCelebrationDone() {
   border-top: 1px solid var(--color-border);
 }
 
-.correct-answer {
-  margin-bottom: 12px;
-  color: var(--color-success);
-  font-size: 16px;
-}
-
-.analysis {
-  color: var(--color-text-muted);
+.answer-analysis-display {
   line-height: 1.8;
   font-size: 15px;
+  color: var(--color-text-body);
 }
 
-/* 结果过渡动画 */
 .result-enter-active,
 .result-leave-active {
   transition: all 0.3s ease;

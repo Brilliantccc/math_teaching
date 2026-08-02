@@ -1,19 +1,22 @@
 <script setup lang="ts">
-import { onMounted } from 'vue'
-import { useAuthStore } from '@/stores'
+import { computed } from 'vue'
+import { useRoute } from 'vue-router'
 import AppLayout from '@/components/layout/AppLayout.vue'
 
-const authStore = useAuthStore()
+const route = useRoute()
 
-onMounted(async () => {
-  await authStore.init()
+// 认证页面（登录、注册、忘记密码）不使用 AppLayout
+const isAuthPage = computed(() => {
+  const authPages = ['Login', 'Register', 'ForgotPassword']
+  return authPages.includes(route.name as string)
 })
 </script>
 
 <template>
-  <AppLayout>
+  <AppLayout v-if="!isAuthPage">
     <router-view />
   </AppLayout>
+  <router-view v-else />
 </template>
 
 <style>

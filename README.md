@@ -1,4 +1,4 @@
-# 数学题库管理系统
+﻿# 数学题库管理系统
 
 面向中国初高中的数学题库管理系统，支持教师管理题目、组卷、查看学生数据，学生在线练习、错题回顾、成绩追踪。
 
@@ -29,7 +29,7 @@ math-question-bank/
 │   ├── schemas/           # Pydantic 数据模型
 │   ├── core/              # 核心模块（认证、依赖注入）
 │   ├── services/          # 业务服务（LLM）
-│   ├── utils/             # 工具函数（OCR、PDF）
+│   ├── utils/             # 工具函数（PDF）
 │   ├── config.py          # 配置管理
 │   ├── database.py        # 数据库连接
 │   └── main.py            # 应用入口
@@ -47,10 +47,21 @@ math-question-bank/
 └── requirements.txt       # Python 依赖
 ```
 
-## 快速开始
+## 安装与配置
 
 ### 1. 安装依赖
 
+**Windows (PowerShell):**
+```powershell
+# 后端
+pip install -r requirements.txt
+
+# 前端
+cd frontend
+npm install
+```
+
+**Linux / Mac (Bash):**
 ```bash
 # 后端
 pip install -r requirements.txt
@@ -62,13 +73,45 @@ npm install
 
 ### 2. 配置环境变量
 
+**Windows (PowerShell):**
+```powershell
+copy .env.example .env
+```
+
+**Linux / Mac (Bash):**
 ```bash
 cp .env.example .env
-# 编辑 .env 文件，配置数据库、LLM 等
 ```
+
+然后编辑 `.env` 文件，配置以下参数：
+
+| 参数 | 说明 | 示例值 |
+|------|------|--------|
+| `SECRET_KEY` | 应用密钥，用于 JWT 等加密 | 随机字符串（如 `my-secret-key-123`） |
+| `DEBUG` | 调试模式 | `true` |
+| `ADMIN_PASSWORD` | 管理员默认密码 | `admin123` |
+| `RESET_CODE` | 重置密码验证码（留空则禁用） | 可选 |
+| `LLM_MODEL_ID` | LLM 模型名称 | `gpt-4o` |
+| `LLM_API_KEY` | LLM API 密钥 | 你的 API Key |
+| `LLM_BASE_URL` | LLM 服务地址 | `https://api.openai.com/v1` |
+| `LLM_TIMEOUT` | LLM 请求超时（秒） | `60` |
+
+> 注意：至少需要配置 `LLM_API_KEY` 才能使用 AI 功能。
 
 ### 3. 启动服务
 
+**Windows (PowerShell):**
+```powershell
+# 后端 (端口 8000)
+cd backend
+uvicorn main:app --reload --port 8000
+
+# 前端 (端口 5173)
+cd frontend
+npm run dev
+```
+
+**Linux / Mac (Bash):**
 ```bash
 # 后端 (端口 8000)
 cd backend
@@ -88,10 +131,16 @@ npm run dev
 
 默认管理员：`admin` / `admin123`
 
+### 注意事项
+
+- **Python 版本**：建议使用 Python 3.8+
+- **Node.js 版本**：建议使用 Node.js 16+
+- **端口冲突**：如果端口 8000 或 5173 被占用，可以修改启动命令中的端口号
+- **防火墙**：确保防火墙允许访问这些端口
 ## 功能模块
 
 ### 教师端
-- 题目管理：增删改查、批量导入、OCR 识别
+- 题目管理：增删改查、批量导入、AI 图片识别
 - 试卷管理：手动组卷、自动组卷、PDF 导出
 - 学生数据：练习统计、错题分析、成绩追踪
 
@@ -102,8 +151,20 @@ npm run dev
 - 个人统计：练习进度、正确率趋势
 
 ### AI 功能
-- 图片识别：从图片提取数学题目
+- 图片识别：从图片提取数学题目（基于 LLM 视觉识别）
 - 智能解析：自动生成答案和解析
+- LaTeX 公式渲染：使用 KaTeX 支持数学公式显示
+- 题目去重：自动检测并防止重复题目
+
+### LaTeX 支持
+
+系统使用 KaTeX 渲染数学公式，支持以下格式：
+
+| 格式 | 示例 | 说明 |
+|------|------|------|
+| 行内公式 | `$a^2+b^2=c^2$` | 公式在文本中显示 |
+| 块级公式 | `$$\frac{1}{2}$$` | 公式独占一行 |
+| 中文文本 | `$\text{已知}a=2$` | 中文需要用 `\text{}` 包裹 |
 
 ## 配置说明
 
@@ -116,10 +177,6 @@ LLM_API_KEY=your-api-key
 LLM_BASE_URL=https://api.openai.com/v1
 ```
 
-### OCR 配置
 
-需要安装 [Tesseract-OCR](https://github.com/UB-Mannheim/tesseract/wiki)
 
-```bash
-TESSERACT_PATH=/path/to/tesseract
-```
+

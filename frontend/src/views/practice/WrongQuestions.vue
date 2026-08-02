@@ -3,7 +3,7 @@ import { ref, onMounted } from 'vue'
 import { api } from '@/api'
 import type { WrongQuestion, WrongQuestionListResponse } from '@/types'
 import { message } from 'ant-design-vue'
-import LatexText from '@/components/LatexText.vue'
+import LatexText from '@/components/display/LatexText.vue'
 
 const wrongQuestions = ref<WrongQuestion[]>([])
 const total = ref(0)
@@ -62,7 +62,13 @@ onMounted(() => {
         </div>
       </div>
 
-      <a-empty v-if="!loading && wrongQuestions.length === 0" description="暂无错题" />
+      <a-empty v-if="!loading && wrongQuestions.length === 0" description="暂无错题">
+        <template #description>
+          <p>还没有错题记录</p>
+          <p style="color: var(--color-text-muted); font-size: 13px;">去练习几道题，做错的题目会自动收录到这里</p>
+        </template>
+        <a-button type="primary" @click="$router.push('/practice')">开始练习</a-button>
+      </a-empty>
     </a-spin>
 
     <div class="pagination">

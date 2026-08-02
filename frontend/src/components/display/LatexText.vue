@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { renderMathText } from '@/utils/katex'
+import { renderMathText } from '@/utils/math-render'
 
 const props = defineProps<{ content: string }>()
 

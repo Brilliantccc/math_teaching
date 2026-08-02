@@ -183,7 +183,7 @@ async def get_student_stats(
         recent_list.append({
             "id": r.id,
             "question_id": r.question_id,
-            "question_title": q.title if q else "",
+            "question_title": q.content[:50] if q else "",
             "is_correct": r.is_correct,
             "created_at": r.created_at.isoformat() if r.created_at else None,
         })
@@ -325,7 +325,7 @@ async def get_class_stats(
         if q:
             wrong_list.append({
                 "question_id": item.question_id,
-                "question_title": q.title,
+                "question_title": q.content[:50],
                 "wrong_count": item.wrong_count,
             })
 

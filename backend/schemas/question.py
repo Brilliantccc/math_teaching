@@ -6,13 +6,11 @@ from pydantic import BaseModel, Field
 
 class QuestionCreate(BaseModel):
     """创建题目请求"""
-    title: str = ''
     content: str = ''
     tags: str = '[]'
     difficulty: int = Field(default=1, ge=1, le=3)
     source: str = ''
-    answer: str = ''
-    analysis: str = ''
+    answer_analysis: str = ''
     grade: str = '初一'
     category: str = ''
     paper_id: Optional[int] = None
@@ -21,13 +19,11 @@ class QuestionCreate(BaseModel):
 
 class QuestionUpdate(BaseModel):
     """更新题目请求"""
-    title: Optional[str] = None
     content: Optional[str] = None
     tags: Optional[str] = None
     difficulty: Optional[int] = Field(default=None, ge=1, le=3)
     source: Optional[str] = None
-    answer: Optional[str] = None
-    analysis: Optional[str] = None
+    answer_analysis: Optional[str] = None
     grade: Optional[str] = None
     category: Optional[str] = None
 
@@ -35,14 +31,12 @@ class QuestionUpdate(BaseModel):
 class QuestionResponse(BaseModel):
     """题目响应"""
     id: int
-    title: str
     content: str
     tags: str
     difficulty: int
     source: str
     image_path: str
-    answer: str
-    analysis: str
+    answer_analysis: str
     grade: str
     category: str
     paper_id: Optional[int] = None
@@ -58,6 +52,21 @@ class QuestionListResponse(BaseModel):
     page: int
     per_page: int
     pages: int
+
+
+class QuestionBatchItem(BaseModel):
+    """批量创建中的单个题目"""
+    content: str = ''
+    answer_analysis: str = ''
+    grade: str = '初一'
+    category: str = ''
+    difficulty: int = 1
+    image_path: str = ''
+
+
+class BatchCreateRequest(BaseModel):
+    """批量创建题目请求"""
+    questions: List[QuestionBatchItem]
 
 
 class BatchDeleteRequest(BaseModel):

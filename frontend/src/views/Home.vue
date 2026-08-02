@@ -138,45 +138,53 @@ const teacherFeatures = [
 
 .welcome-section {
   text-align: center;
-  margin-bottom: 32px;
+  margin-bottom: 48px;
+  padding: 32px 0;
 }
 
 .welcome-section h1 {
-  font-size: 32px;
+  font-size: clamp(24px, 4vw, 36px);
   color: var(--color-primary);
-  margin-bottom: 8px;
+  margin-bottom: 12px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
 }
 
 .welcome-section p {
-  color: var(--color-text-muted);
+  color: var(--color-text-secondary);
   font-size: 16px;
+  max-width: 48ch;
+  margin: 0 auto;
+  line-height: 1.6;
 }
 
 .stats-section {
-  margin-bottom: 32px;
+  margin-bottom: 48px;
 }
 
 .stat-card {
   text-align: center;
-  padding: 20px;
+  padding: 24px;
   background: var(--color-primary-bg);
   border-radius: var(--radius-lg);
 }
 
 .features-section {
-  margin-bottom: 32px;
+  margin-bottom: 48px;
 }
 
 .features-section h2 {
   font-size: 20px;
-  margin-bottom: 16px;
+  font-weight: 600;
+  margin-bottom: 20px;
   color: var(--color-text-primary);
 }
 
 .feature-card {
-  height: 200px;
   cursor: pointer;
   transition: transform var(--transition-normal), box-shadow var(--transition-normal);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
 }
 
 .feature-card:hover {
@@ -191,5 +199,31 @@ const teacherFeatures = [
   height: 120px;
   font-size: 48px;
   color: var(--color-primary);
+  background: var(--color-primary-bg);
+}
+
+.feature-card :deep(.ant-card-body) {
+  padding: 16px;
+}
+
+.feature-card :deep(.ant-card-meta-description) {
+  color: var(--color-text-muted);
+  font-size: 13px;
+  line-height: 1.5;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+@media (max-width: 768px) {
+  .welcome-section h1 {
+    font-size: 24px;
+  }
+
+  .feature-icon {
+    height: 80px;
+    font-size: 36px;
+  }
 }
 </style>

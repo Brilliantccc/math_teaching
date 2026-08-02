@@ -2,9 +2,11 @@
 import { ref, onMounted } from 'vue'
 import { api } from '@/api'
 import { useGradeStore } from '@/stores'
+import { GRADES } from '@/stores/grade'
 import type { Question, QuestionListResponse } from '@/types'
-import { message } from 'ant-design-vue'
-import { PlusOutlined, DeleteOutlined, EditOutlined } from '@ant-design/icons-vue'
+import { message, Modal } from 'ant-design-vue'
+import { PlusOutlined, DeleteOutlined, EditOutlined, ClearOutlined } from '@ant-design/icons-vue'
+import LatexText from '@/components/display/LatexText.vue'
 
 const gradeStore = useGradeStore()
 
@@ -12,13 +14,15 @@ const questions = ref<Question[]>([])
 const total = ref(0)
 const page = ref(1)
 const loading = ref(false)
+const deduplicating = ref(false)
 const selectedRowKeys = ref<number[]>([])
+const duplicateInfo = ref<{ groups: number; count: number } | null>(null)
 
 async function loadQuestions() {
   loading.value = true
   try {
     const response = await api.get('/api/questions', {
-      params: { page: page.value, per_page: 20, grade: gradeStore.currentGrade }
+      params: { page: page.value, per_page: 20, grade: gradeStore.getGradeParam() }
     })
     const data: QuestionListResponse = response.data
     questions.value = data.questions
@@ -30,11 +34,51 @@ async function loadQuestions() {
   }
 }
 
+async function checkDuplicates() {
+  try {
+    const token = localStorage.getItem('token')
+    console.log('[Manage] Token exists:', !!token)
+    const response = await api.get('/api/questions/check-duplicates')
+    duplicateInfo.value = {
+      groups: response.data.duplicate_groups,
+      count: response.data.total_duplicates
+    }
+  } catch (error: any) {
+    console.error('Failed to check duplicates:', error.response?.status, error.response?.data)
+    // 不显示错误，静默处理
+  }
+}
+
+async function deduplicate() {
+  Modal.confirm({
+    title: '清理重复题目',
+    content: `确定要清理重复题目吗？将保留每组中最早创建的题目，删除其余重复项。`,
+    okText: '确定清理',
+    cancelText: '取消',
+    onOk: async () => {
+      deduplicating.value = true
+      try {
+        const response = await api.post('/api/questions/deduplicate')
+        message.success(response.data.message)
+        duplicateInfo.value = null
+        loadQuestions()
+        checkDuplicates()
+      } catch (error) {
+        message.error('清理失败')
+        console.error('Failed to deduplicate:', error)
+      } finally {
+        deduplicating.value = false
+      }
+    }
+  })
+}
+
 async function deleteQuestion(id: number) {
   try {
     await api.delete(`/api/questions/${id}`)
     message.success('已删除')
     loadQuestions()
+    checkDuplicates()
   } catch (error) {
     console.error('Failed to delete question:', error)
   }
@@ -50,23 +94,50 @@ async function batchDelete() {
     message.success('已批量删除')
     selectedRowKeys.value = []
     loadQuestions()
+    checkDuplicates()
   } catch (error) {
     console.error('Failed to batch delete:', error)
   }
 }
 
+function handleGradeChange(grade: string) {
+  gradeStore.setGrade(grade)
+  page.value = 1
+  loadQuestions()
+}
+
 onMounted(() => {
   loadQuestions()
+  checkDuplicates()
 })
 </script>
 
 <template>
   <div class="manage">
     <div class="header">
-      <h2>题目管理</h2>
+      <div class="header-left">
+        <h2>题目管理</h2>
+        <a-select
+          :value="gradeStore.currentGrade"
+          style="width: 120px"
+          @change="handleGradeChange"
+        >
+          <a-select-option v-for="g in gradeStore.grades" :key="g" :value="g">{{ g }}</a-select-option>
+          <a-select-option v-for="g in GRADES" :key="g" :value="g">{{ g }}</a-select-option>
+        </a-select>
+      </div>
       <a-space>
-        <a-button type="primary" @click="$router.push('/upload')">
+        <a-button @click="$router.push('/upload')">
           <PlusOutlined /> 上传题目
+        </a-button>
+        <a-button
+          v-if="duplicateInfo && duplicateInfo.count > 0"
+          type="primary"
+          danger
+          :loading="deduplicating"
+          @click="deduplicate"
+        >
+          <ClearOutlined /> 清理重复（{{ duplicateInfo.count }}道）
         </a-button>
         <a-button danger @click="batchDelete" :disabled="selectedRowKeys.length === 0">
           <DeleteOutlined /> 批量删除
@@ -78,8 +149,8 @@ onMounted(() => {
       <a-table
         :data-source="questions"
         :columns="[
-          { title: 'ID', dataIndex: 'id', key: 'id', width: 60 },
-          { title: '标题', dataIndex: 'title', key: 'title', ellipsis: true },
+          { title: 'ID', dataIndex: 'id', key: 'id', width: 80 },
+          { title: '题干', dataIndex: 'content', key: 'content', ellipsis: true },
           { title: '年级', dataIndex: 'grade', key: 'grade', width: 80 },
           { title: '难度', dataIndex: 'difficulty', key: 'difficulty', width: 80 },
           { title: '操作', key: 'action', width: 120 }
@@ -89,6 +160,9 @@ onMounted(() => {
         row-key="id"
       >
         <template #bodyCell="{ column, record }">
+          <template v-if="column.key === 'content'">
+            <LatexText :content="record.content" />
+          </template>
           <template v-if="column.key === 'difficulty'">
             <a-tag :color="record.difficulty === 1 ? 'success' : record.difficulty === 2 ? 'warning' : 'error'">
               {{ record.difficulty === 1 ? '简单' : record.difficulty === 2 ? '中等' : '困难' }}
@@ -123,5 +197,19 @@ onMounted(() => {
   justify-content: space-between;
   align-items: center;
   margin-bottom: 16px;
+}
+
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.header-left h2 {
+  margin: 0;
+}
+
+:deep(.ant-table-thead > tr > th) {
+  white-space: nowrap;
 }
 </style>

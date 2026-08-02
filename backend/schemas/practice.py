@@ -20,8 +20,7 @@ class SubmitAnswerRequest(BaseModel):
 class SubmitAnswerResponse(BaseModel):
     """提交答案响应"""
     is_correct: bool
-    correct_answer: str
-    analysis: str
+    answer_analysis: str
 
 
 class WrongQuestionResponse(BaseModel):

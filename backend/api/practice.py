@@ -56,7 +56,12 @@ async def submit_answer(
     if not question:
         raise NotFoundException("题目")
 
-    correct_answer = (question.answer or "").strip()
+    # 从 answer_analysis 中提取答案部分（分隔符前为答案）
+    answer_analysis = question.answer_analysis or ""
+    if "---解析---" in answer_analysis:
+        correct_answer = answer_analysis.split("---解析---")[0].strip()
+    else:
+        correct_answer = answer_analysis.strip()
     is_correct = 1 if data.answer.strip().lower() == correct_answer.lower() else 0
 
     # 记录练习
@@ -94,8 +99,7 @@ async def submit_answer(
 
     return SubmitAnswerResponse(
         is_correct=bool(is_correct),
-        correct_answer=correct_answer,
-        analysis=question.analysis or ""
+        answer_analysis=question.answer_analysis or ""
     )
 
 
@@ -265,7 +269,7 @@ async def get_stats(
         recent_list.append(RecentPractice(
             id=r.id,
             question_id=r.question_id,
-            question_title=q.title if q else "",
+            question_title=q.content[:50] if q else "",
             is_correct=r.is_correct,
             created_at=r.created_at.isoformat() if r.created_at else None
         ))

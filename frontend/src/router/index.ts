@@ -1,4 +1,4 @@
-/** Vue Router 配置 */
+/** Vue Router 路由配置 */
 
 import { createRouter, createWebHistory } from 'vue-router'
 import { useAuthStore } from '@/stores'
@@ -26,7 +26,7 @@ const router = createRouter({
       meta: { requiresAuth: false }
     },
 
-    // 主页面
+    // 主页
     {
       path: '/',
       name: 'Home',
@@ -36,63 +36,69 @@ const router = createRouter({
     {
       path: '/browse',
       name: 'Browse',
-      component: () => import('@/views/Browse.vue'),
+      component: () => import('@/views/browse/Browse.vue'),
       meta: { requiresAuth: true }
     },
     {
       path: '/practice',
       name: 'Practice',
-      component: () => import('@/views/Practice.vue'),
+      component: () => import('@/views/practice/Practice.vue'),
       meta: { requiresAuth: true }
     },
     {
       path: '/practice/stats',
       name: 'PracticeStats',
-      component: () => import('@/views/PracticeStats.vue'),
+      component: () => import('@/views/practice/PracticeStats.vue'),
       meta: { requiresAuth: true }
     },
     {
       path: '/wrong-questions',
       name: 'WrongQuestions',
-      component: () => import('@/views/WrongQuestions.vue'),
+      component: () => import('@/views/practice/WrongQuestions.vue'),
       meta: { requiresAuth: true }
     },
     {
       path: '/test',
       name: 'Test',
-      component: () => import('@/views/Test.vue'),
+      component: () => import('@/views/test/Test.vue'),
       meta: { requiresAuth: true }
+    },
+    {
+      path: '/test-manage',
+      name: 'TestManage',
+      component: () => import('@/views/test/TestManage.vue'),
+      meta: { requiresAuth: true, requiresTeacher: true }
     },
 
     // 教师功能
     {
       path: '/manage',
       name: 'Manage',
-      component: () => import('@/views/Manage.vue'),
+      component: () => import('@/views/manage/Manage.vue'),
       meta: { requiresAuth: true, requiresTeacher: true }
     },
     {
       path: '/upload',
       name: 'Upload',
-      component: () => import('@/views/Upload.vue'),
+      component: () => import('@/views/upload/Upload.vue'),
       meta: { requiresAuth: true, requiresTeacher: true }
     },
     {
       path: '/question/edit/:id',
       name: 'QuestionEdit',
-      component: () => import('@/views/QuestionEdit.vue'),
+      component: () => import('@/views/manage/QuestionEdit.vue'),
       meta: { requiresAuth: true, requiresTeacher: true }
     },
     {
       path: '/paper-manage',
       name: 'PaperManage',
-      component: () => import('@/views/PaperManage.vue'),
+      component: () => import('@/views/manage/PaperManage.vue'),
       meta: { requiresAuth: true, requiresTeacher: true }
     },
     {
       path: '/student-data',
       name: 'StudentData',
-      component: () => import('@/views/StudentData.vue'),
+      component: () => import('@/views/student/StudentData.vue'),
       meta: { requiresAuth: true, requiresTeacher: true }
     },
 
@@ -100,7 +106,7 @@ const router = createRouter({
     {
       path: '/change-password',
       name: 'ChangePassword',
-      component: () => import('@/views/ChangePassword.vue'),
+      component: () => import('@/views/auth/ChangePassword.vue'),
       meta: { requiresAuth: true }
     },
 
@@ -116,13 +122,14 @@ const router = createRouter({
 router.beforeEach(async (to, from, next) => {
   const authStore = useAuthStore()
 
-  // 初始化认证状态
-  if (!authStore.isAuthenticated && authStore.token) {
+  // 初始化认证状态（只在首次导航时调用）
+  if (authStore.token && !authStore.userFetched) {
     await authStore.init()
   }
 
   // 检查是否需要认证
-  if (to.meta.requiresAuth !== false && !authStore.isAuthenticated) {
+  // 如果有 token 但用户信息还没获取到，允许继续（等待异步完成）
+  if (to.meta.requiresAuth !== false && !authStore.isAuthenticated && !authStore.token) {
     next({ name: 'Login', query: { redirect: to.fullPath } })
     return
   }

@@ -76,6 +76,9 @@ class LLMService:
 
     def parse_json(self, text: str) -> Any:
         """从LLM响应中解析JSON"""
+        # 清理文本
+        text = text.strip()
+
         # 尝试直接解析
         try:
             return json.loads(text)
@@ -90,17 +93,37 @@ class LLMService:
             except json.JSONDecodeError:
                 pass
 
-        # 尝试找到第一个 { 或 [ 开始的JSON
-        for start_char, end_char in [("{", "}"), ("[", "]")]:
+        # 尝试找到第一个 [ 或 { 开始的JSON（优先数组）
+        for start_char, end_char in [("[", "]"), ("{", "}")]:
             start = text.find(start_char)
+            if start == -1:
+                continue
+            # 从后往前找匹配的结束符
             end = text.rfind(end_char)
-            if start != -1 and end > start:
+            if end > start:
                 try:
                     return json.loads(text[start : end + 1])
                 except json.JSONDecodeError:
                     pass
 
-        raise ValueError(f"无法解析JSON: {text[:200]}...")
+        # 尝试逐行清理后解析
+        lines = text.split('\n')
+        json_lines = []
+        in_json = False
+        for line in lines:
+            stripped = line.strip()
+            if stripped.startswith(('[', '{')):
+                in_json = True
+            if in_json:
+                json_lines.append(line)
+            if in_json and stripped.endswith((']', '}')):
+                try:
+                    return json.loads('\n'.join(json_lines))
+                except json.JSONDecodeError:
+                    in_json = False
+                    json_lines = []
+
+        raise ValueError(f"无法解析JSON: {text[:300]}...")
 
 
 # 全局单例

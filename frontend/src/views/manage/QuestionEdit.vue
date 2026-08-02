@@ -3,32 +3,16 @@ import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { api, getLLMStatus, analyzeQuestion } from '@/api'
 import { message } from 'ant-design-vue'
-import LatexEditor from '@/components/LatexEditor.vue'
+import LatexEditor from '@/components/editor/LatexEditor.vue'
 
 const route = useRoute()
 const router = useRouter()
 
 const formState = ref({
-  title: '',
   content: '',
-  answer: '',
-  analysis: '',
+  answer_analysis: '',
   grade: '初一',
   difficulty: 1
-})
-
-// 题干 = title + content 合并显示
-const stem = computed({
-  get: () => {
-    const parts = [formState.value.title, formState.value.content].filter(Boolean)
-    return parts.join('\n')
-  },
-  set: (val: string) => {
-    // 第一行作为 title，全部作为 content
-    const lines = val.split('\n')
-    formState.value.title = lines[0] || ''
-    formState.value.content = val
-  }
 })
 
 const loading = ref(false)
@@ -54,8 +38,7 @@ async function handleAIAnalyze() {
   try {
     const result = await analyzeQuestion(formState.value.content)
     if (result.success && result.data) {
-      if (result.data.answer) formState.value.answer = result.data.answer
-      if (result.data.analysis) formState.value.analysis = result.data.analysis
+      if (result.data.answer_analysis) formState.value.answer_analysis = result.data.answer_analysis
       message.success('AI 生成完成')
     } else {
       message.error('AI 生成失败，请重试')
@@ -97,15 +80,16 @@ onMounted(async () => {
 
     <a-form layout="vertical" style="max-width: 800px">
       <a-form-item label="题干（支持 LaTeX）">
-        <LatexEditor v-model="stem" :rows="6" placeholder="输入题目题干（支持 LaTeX）" />
+        <LatexEditor v-model="formState.content" :rows="6" placeholder="输入题目题干（中文用 \text{中文}，公式用 $公式$）" />
       </a-form-item>
 
-      <a-form-item label="答案（支持 LaTeX）">
-        <LatexEditor v-model="formState.answer" :rows="2" placeholder="答案（支持 LaTeX）" />
-      </a-form-item>
-
-      <a-form-item label="解析（支持 LaTeX）">
-        <LatexEditor v-model="formState.analysis" :rows="3" placeholder="解析（支持 LaTeX）" />
+      <a-form-item label="答案与解析（支持 LaTeX）">
+        <LatexEditor
+          v-model="formState.answer_analysis"
+          :rows="6"
+          placeholder="输入答案与解析（用 ---解析--- 分隔答案和解析部分）"
+        />
+        <div class="aa-hint">格式：先写答案，然后写 ---解析---，再写解析内容。中文用 \text{中文}</div>
       </a-form-item>
 
       <a-form-item>
@@ -157,7 +141,13 @@ onMounted(async () => {
 
 .ai-hint {
   font-size: 12px;
-  color: #999;
+  color: var(--color-text-muted);
+  margin-top: 4px;
+}
+
+.aa-hint {
+  font-size: 12px;
+  color: var(--color-text-muted);
   margin-top: 4px;
 }
 </style>

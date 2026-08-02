@@ -32,14 +32,12 @@ export interface TokenResponse {
 /** 题目类型 */
 export interface Question {
   id: number
-  title: string
   content: string
   tags: string
   difficulty: number
   source: string
   image_path: string
-  answer: string
-  analysis: string
+  answer_analysis: string
   grade: string
   category: string
   paper_id: number | null
@@ -173,10 +171,8 @@ export interface LLMStatus {
 
 /** LLM 题目提取结果 */
 export interface LLMExtractResult {
-  title: string
   content: string
-  answer: string
-  analysis: string
+  answer_analysis: string
   tags: string[]
   difficulty: number
   category: string
@@ -184,6 +180,5 @@ export interface LLMExtractResult {
 
 /** LLM 分析结果 */
 export interface LLMAnalyzeResult {
-  answer: string
-  analysis: string
+  answer_analysis: string
 }
