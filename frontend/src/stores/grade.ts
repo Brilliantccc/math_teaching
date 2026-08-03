@@ -2,8 +2,10 @@
 
 import { defineStore } from 'pinia'
 import { ref, watch } from 'vue'
+import { GRADES as BASE_GRADES } from '@/constants'
 
-export const GRADES = ['全部', '初一', '初二', '初三', '高一', '高二', '高三']
+// 在基础年级列表前添加"全部"选项
+export const GRADES = ['全部', ...BASE_GRADES]
 
 export const useGradeStore = defineStore('grade', () => {
   const currentGrade = ref(localStorage.getItem('grade') || '初一')

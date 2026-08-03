@@ -27,7 +27,12 @@ class LLMService:
             "Content-Type": "application/json",
         }
 
-    def chat(self, messages: List[Dict[str, str]]) -> str:
+    def chat(
+        self,
+        messages: List[Dict[str, str]],
+        max_tokens: Optional[int] = None,
+        temperature: float = 0.3,
+    ) -> str:
         """发送聊天请求"""
         if not self.is_configured():
             raise ValueError("LLM未配置")
@@ -36,8 +41,12 @@ class LLMService:
         payload = {
             "model": self.model_id,
             "messages": messages,
-            "temperature": 0.3,
+            "temperature": temperature,
         }
+
+        # 添加max_tokens
+        if max_tokens:
+            payload["max_tokens"] = max_tokens
 
         with httpx.Client(timeout=self.timeout) as client:
             response = client.post(url, json=payload, headers=self._get_headers())
@@ -45,7 +54,13 @@ class LLMService:
             data = response.json()
             return data["choices"][0]["message"]["content"]
 
-    def chat_with_image(self, image_b64: str, prompt: str) -> str:
+    def chat_with_image(
+        self,
+        image_b64: str,
+        prompt: str,
+        max_tokens: Optional[int] = None,
+        temperature: float = 0.3,
+    ) -> str:
         """发送带图片的聊天请求"""
         if not self.is_configured():
             raise ValueError("LLM未配置")
@@ -65,8 +80,12 @@ class LLMService:
                     ],
                 }
             ],
-            "temperature": 0.3,
+            "temperature": temperature,
         }
+
+        # 添加max_tokens
+        if max_tokens:
+            payload["max_tokens"] = max_tokens
 
         with httpx.Client(timeout=self.timeout) as client:
             response = client.post(url, json=payload, headers=self._get_headers())
@@ -75,7 +94,7 @@ class LLMService:
             return data["choices"][0]["message"]["content"]
 
     def parse_json(self, text: str) -> Any:
-        """从LLM响应中解析JSON"""
+        """从LLM响应中解析JSON（带修复逻辑）"""
         # 清理文本
         text = text.strip()
 
@@ -123,7 +142,51 @@ class LLMService:
                     in_json = False
                     json_lines = []
 
+        # 尝试修复不完整的JSON
+        fixed = self._try_fix_incomplete_json(text)
+        if fixed is not None:
+            return fixed
+
         raise ValueError(f"无法解析JSON: {text[:300]}...")
+
+    def _try_fix_incomplete_json(self, text: str) -> Optional[Any]:
+        """尝试修复不完整的JSON"""
+        # 找到JSON数组的开始
+        array_start = text.find('[')
+        if array_start == -1:
+            return None
+
+        # 提取数组内容
+        content = text[array_start:]
+
+        # 尝试找到最后一个完整的对象
+        # 查找最后一个 "}" 或 "]"
+        last_brace = content.rfind('}')
+        if last_brace == -1:
+            return None
+
+        # 尝试截断到最后一个完整对象
+        truncated = content[:last_brace + 1]
+
+        # 检查是否需要关闭数组
+        if not truncated.endswith(']'):
+            truncated += ']'
+
+        try:
+            return json.loads(truncated)
+        except json.JSONDecodeError:
+            pass
+
+        # 尝试更激进的修复：找到最后一个逗号后的完整对象
+        last_comma = truncated.rfind(',')
+        if last_comma != -1:
+            truncated = truncated[:last_comma] + ']'
+            try:
+                return json.loads(truncated)
+            except json.JSONDecodeError:
+                pass
+
+        return None
 
 
 # 全局单例

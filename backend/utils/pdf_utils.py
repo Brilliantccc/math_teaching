@@ -1,6 +1,6 @@
 """PDF生成工具"""
 
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 import os
 import re
 
@@ -47,6 +47,14 @@ def _parse_answer_analysis(answer_analysis: str) -> tuple:
     return answer_analysis.strip(), ""
 
 
+def _escape_for_reportlab(text: str) -> str:
+    """转义 ReportLab XML 解析器不支持的字符"""
+    text = text.replace('&', '&amp;')
+    text = text.replace('<', '&lt;')
+    text = text.replace('>', '&gt;')
+    return text
+
+
 def _process_latex_in_text(text: str, latex_dir: str) -> str:
     """处理文本中的 LaTeX 公式，将 $...$ 转换为可显示的格式"""
     if not text:
@@ -54,6 +62,20 @@ def _process_latex_in_text(text: str, latex_dir: str) -> str:
 
     # 修复双反斜杠：\\\\times -> \\times
     text = re.sub(r'\\\\([a-zA-Z]+)', r'\\\1', text)
+
+    # 先处理图片引用 __IMAGE__...__END_IMAGE__
+    image_parts = []
+    def save_image_placeholder(match):
+        image_parts.append(match.group(0))
+        return f"__IMG_PLACEHOLDER_{len(image_parts)-1}__"
+    text = re.sub(r'__IMAGE__.*?__END_IMAGE__', save_image_placeholder, text)
+
+    # 转义 HTML 特殊字符（在处理 LaTeX 之前）
+    text = _escape_for_reportlab(text)
+
+    # 恢复图片占位符
+    for idx, part in enumerate(image_parts):
+        text = text.replace(f"__IMG_PLACEHOLDER_{idx}__", part)
 
     # 替换换行符
     text = text.replace("\n", "<br/>")
@@ -109,13 +131,13 @@ def generate_test_pdf(
     output_path: str,
     title: str = "数学试卷",
     show_answer: bool = False,
-    score_per_question: int = 10,
+    question_scores: Optional[Dict[int, int]] = None,
 ) -> str:
     """生成试卷PDF"""
     try:
         from reportlab.lib.pagesizes import A4
         from reportlab.lib import colors
-        from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Image
+        from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Image as RLImage
         from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
         from reportlab.lib.units import mm
         from reportlab.pdfbase import pdfmetrics
@@ -174,7 +196,11 @@ def generate_test_pdf(
         fontName=font_name, fontSize=10, alignment=1, textColor=colors.HexColor("#999999"), spaceBefore=20
     )
 
-    total_score = len(questions) * score_per_question
+    # 计算总分
+    if question_scores:
+        total_score = sum(question_scores.values())
+    else:
+        total_score = len(questions) * 10  # 默认每题10分
 
     story = []
 
@@ -191,9 +217,25 @@ def generate_test_pdf(
 
     # 题目
     for i, q in enumerate(questions, 1):
-        content = _process_latex_in_text(q.get("content", ""), latex_dir)
-        story.append(Paragraph(f"<b>{i}.</b> {content}", question_style))
-        story.append(Paragraph(f"（{score_per_question}分）", score_style))
+        q_id = q.get("id", i)
+        content = q.get("content", "")
+        images = q.get("images", "[]")
+
+        # 解析images JSON字符串
+        import json
+        try:
+            images_list = json.loads(images) if isinstance(images, str) else images
+        except:
+            images_list = []
+
+        # 处理内容中的图片引用 {{img:N}}
+        content_html = _process_content_with_images(content, images_list, latex_dir)
+
+        # 获取该题的分值
+        score = question_scores.get(q_id, 10) if question_scores else 10
+
+        story.append(Paragraph(f"<b>{i}.</b> {content_html}", question_style))
+        story.append(Paragraph(f"（{score}分）", score_style))
 
         # 答题区域（空白行）
         if not show_answer:
@@ -217,3 +259,51 @@ def generate_test_pdf(
 
     doc.build(story)
     return output_path
+
+
+def _process_content_with_images(content: str, images: List[str], latex_dir: str) -> str:
+    """处理内容中的图片引用和LaTeX公式"""
+    import re
+    import urllib.request
+
+    if not content:
+        return ""
+
+    # 修复双反斜杠
+    content = re.sub(r'\\\\([a-zA-Z]+)', r'\\\1', content)
+
+    # 处理图片引用 {{img:N}}
+    def replace_image(match):
+        img_index = int(match.group(1))
+        if img_index < len(images):
+            img_url = images[img_index]
+            # 下载图片到临时目录
+            try:
+                img_filename = f"img_{img_index}_{hash(img_url) % 10000}.png"
+                img_path = os.path.join(latex_dir, img_filename)
+                if not os.path.exists(img_path):
+                    # 处理相对路径
+                    if img_url.startswith("uploads/"):
+                        from backend.config import settings
+                        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+                        full_path = os.path.join(base_dir, img_url)
+                        if os.path.exists(full_path):
+                            import shutil
+                            shutil.copy(full_path, img_path)
+                        else:
+                            return f"[图片{img_index + 1}]"
+                    else:
+                        urllib.request.urlretrieve(img_url, img_path)
+                # 返回图片占位符，后面会用reportlab的Image处理
+                return f"__IMAGE__{img_path}__END_IMAGE__"
+            except Exception as e:
+                print(f"[PDF] Image download error: {e}")
+                return f"[图片{img_index + 1}]"
+        return f"[图片{img_index + 1}]"
+
+    content = re.sub(r'\{\{img:(\d+)\}\}', replace_image, content)
+
+    # 处理LaTeX公式
+    content = _process_latex_in_text(content, latex_dir)
+
+    return content

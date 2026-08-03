@@ -19,6 +19,12 @@ from backend.models.user import User
 from backend.models.question import Question
 from backend.models.paper import Paper
 from backend.config import settings
+from backend.schemas.admin import (
+    UpdateUserRequest, ImportQuestionsRequest, BatchUpdateCategoriesRequest,
+    StudentListResponse, StudentStatsResponse, StudentWrongQuestionsResponse,
+    ClassStatsResponse, StandardCategoriesResponse, CurrentCategoriesResponse,
+    NormalizeCategoriesResponse
+)
 
 router = APIRouter()
 
@@ -27,12 +33,15 @@ router = APIRouter()
 
 GRADES = ["初一", "初二", "初三", "高一", "高二", "高三"]
 
+# 标准题目分类
 CATEGORIES = {
-    "数与式": ["有理数加减", "有理数乘除", "整式", "因式分解", "分式"],
-    "代数方程": ["一元一次方程", "一元二次方程", "二元一次方程组", "不等式"],
-    "函数": ["一次函数", "反比例函数", "二次函数"],
-    "几何": ["三角形", "四边形", "圆", "相似", "全等"],
-    "统计与概率": ["统计", "概率"],
+    "代数": ["整式", "分式", "二次根式", "方程", "不等式"],
+    "函数": ["一次函数", "反比例函数", "二次函数", "函数图像"],
+    "几何": ["三角形", "四边形", "圆", "相似", "全等", "勾股定理"],
+    "统计与概率": ["统计", "概率", "数据分析"],
+    "数与计算": ["有理数", "实数", "计算"],
+    "图形与变换": ["平移", "旋转", "对称"],
+    "综合": ["综合题", "应用题", "探究"],
 }
 
 ALL_TAGS = []
@@ -63,7 +72,7 @@ async def get_users(
 @router.put("/users/{user_id}")
 async def update_user(
     user_id: int,
-    data: dict,
+    data: UpdateUserRequest,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_admin)
 ):
@@ -72,12 +81,12 @@ async def update_user(
     if not user:
         raise NotFoundException("用户")
 
-    if "role" in data and data["role"] in ("student", "teacher", "admin"):
-        user.role = data["role"]
-    if "display_name" in data:
-        user.display_name = data["display_name"]
-    if "password" in data and len(data["password"]) >= 6:
-        user.password_hash = get_password_hash(data["password"])
+    if data.role is not None:
+        user.role = data.role
+    if data.display_name is not None:
+        user.display_name = data.display_name
+    if data.password is not None:
+        user.password_hash = get_password_hash(data.password)
 
     await db.commit()
     return {"message": "用户已更新", "user": user.to_dict()}
@@ -261,42 +270,34 @@ async def export_questions(
 
 @router.post("/questions/import")
 async def import_questions(
-    data: dict,
+    data: ImportQuestionsRequest,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_teacher)
 ):
     """从JSON导入题目"""
-    if not data or "questions" not in data:
-        raise HTTPException(status_code=400, detail="无效的JSON格式")
-
-    questions = data["questions"]
-    if not questions:
+    if not data.questions:
         raise HTTPException(status_code=400, detail="没有要导入的题目")
 
     imported = 0
     skipped = 0
 
-    for q in questions:
-        # 去重：标题+内容
-        result = await db.execute(
-            select(Question).where(
-                Question.title == q.get("title", ""),
-                Question.content == q.get("content", "")
+    for q in data.questions:
+        # 去重：内容
+        if q.get("content"):
+            result = await db.execute(
+                select(Question).where(Question.content == q.get("content", ""))
             )
-        )
-        if result.scalar_one_or_none():
-            skipped += 1
-            continue
+            if result.scalar_one_or_none():
+                skipped += 1
+                continue
 
         question = Question(
-            title=q.get("title", ""),
             content=q.get("content", ""),
             tags=q.get("tags", "[]"),
             difficulty=q.get("difficulty", 1),
             source=q.get("source", ""),
             image_path=q.get("image_path", ""),
-            answer=q.get("answer", ""),
-            analysis=q.get("analysis", ""),
+            answer_analysis=q.get("answer_analysis", ""),
             grade=q.get("grade", "初一"),
             category=q.get("category", ""),
             paper_id=q.get("paper_id"),
@@ -313,3 +314,112 @@ async def import_questions(
         "imported": imported,
         "skipped": skipped
     }
+
+
+# ─── 题目分类标准化 ─────────────────────────────────────────
+
+@router.get("/categories/standard")
+async def get_standard_categories(
+    current_user: User = Depends(require_teacher)
+):
+    """获取标准题目分类列表"""
+    from backend.models.category import STANDARD_CATEGORIES, get_all_standard_categories
+
+    return {
+        "categories": get_all_standard_categories(),
+        "details": STANDARD_CATEGORIES
+    }
+
+
+@router.get("/categories/current")
+async def get_current_categories(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_teacher)
+):
+    """获取数据库中当前使用的所有分类"""
+    from sqlalchemy import func
+
+    result = await db.execute(
+        select(
+            Question.category,
+            func.count(Question.id).label('count')
+        )
+        .where(Question.category != '')
+        .group_by(Question.category)
+        .order_by(func.count(Question.id).desc())
+    )
+
+    categories = [
+        {"name": row[0], "count": row[1]}
+        for row in result.all()
+    ]
+
+    return {"categories": categories}
+
+
+@router.post("/categories/normalize")
+async def normalize_categories(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_admin)
+):
+    """将所有题目的分类标准化为标准分类"""
+    from backend.models.category import normalize_category
+
+    # 获取所有题目
+    result = await db.execute(select(Question))
+    questions = result.scalars().all()
+
+    updated = 0
+    unchanged = 0
+    changes = []
+
+    for q in questions:
+        if not q.category:
+            continue
+
+        normalized = normalize_category(q.category)
+        if normalized != q.category:
+            old_category = q.category
+            q.category = normalized
+            updated += 1
+            changes.append({
+                "id": q.id,
+                "old": old_category,
+                "new": normalized
+            })
+        else:
+            unchanged += 1
+
+    await db.commit()
+
+    return {
+        "message": f"标准化完成：更新 {updated} 题，未改变 {unchanged} 题",
+        "updated": updated,
+        "unchanged": unchanged,
+        "changes": changes[:100]  # 只返回前100条变更记录
+    }
+
+
+@router.put("/categories/batch-update")
+async def batch_update_categories(
+    data: BatchUpdateCategoriesRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_admin)
+):
+    """批量更新题目分类"""
+    if not data.ids:
+        raise HTTPException(status_code=400, detail="请选择要更新的题目")
+    if not data.category:
+        raise HTTPException(status_code=400, detail="请指定目标分类")
+
+    result = await db.execute(
+        select(Question).where(Question.id.in_(data.ids))
+    )
+    questions = result.scalars().all()
+
+    for q in questions:
+        q.category = data.category
+
+    await db.commit()
+
+    return {"message": f"已更新 {len(questions)} 道题目的分类为 '{data.category}'"}

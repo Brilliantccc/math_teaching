@@ -80,3 +80,47 @@ def get_settings() -> Settings:
 
 
 settings = get_settings()
+
+
+def validate_config() -> bool:
+    """验证配置是否完整，启动时调用"""
+    errors = []
+    warnings = []
+
+    # 检查LLM配置
+    if not settings.LLM_API_KEY:
+        warnings.append("LLM_API_KEY未配置，AI功能可能无法使用")
+    if not settings.LLM_BASE_URL:
+        warnings.append("LLM_BASE_URL未配置，AI功能可能无法使用")
+    if not settings.LLM_MODEL_ID:
+        warnings.append("LLM_MODEL_ID未配置，AI功能可能无法使用")
+
+    # 检查管理员密码
+    if settings.ADMIN_PASSWORD == "admin123":
+        warnings.append("ADMIN_PASSWORD使用默认值，建议修改")
+
+    # 检查密钥
+    if settings.SECRET_KEY == "dev-secret-key-change-in-production":
+        warnings.append("SECRET_KEY使用默认值，生产环境请修改")
+
+    if errors:
+        error_msg = "配置错误:\n" + "\n".join(f"  - {e}" for e in errors)
+        raise ValueError(error_msg)
+
+    if warnings:
+        print("\n[WARNING] 配置警告:")
+        for w in warnings:
+            print(f"  - {w}")
+
+    return True
+
+
+def print_config():
+    """打印当前配置（隐藏敏感信息）"""
+    print(f"应用名称: {settings.APP_NAME}")
+    print(f"调试模式: {settings.DEBUG}")
+    print(f"LLM API Key: {'已配置' if settings.LLM_API_KEY else '未配置'}")
+    print(f"LLM Base URL: {settings.LLM_BASE_URL or '未配置'}")
+    print(f"LLM Model: {settings.LLM_MODEL_ID or '未配置'}")
+    print(f"管理员密码: {'已配置' if settings.ADMIN_PASSWORD != 'admin123' else '使用默认值'}")
+    print(f"字体路径: {settings.FONT_PATH}")

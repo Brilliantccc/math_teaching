@@ -34,6 +34,26 @@ async def init_db():
     async with engine.begin() as conn:
         # 创建所有表
         await conn.run_sync(Base.metadata.create_all)
+        # 添加缺失的字段（兼容旧数据库）
+        try:
+            await conn.execute(
+                __import__('sqlalchemy').text(
+                    "ALTER TABLE tests ADD COLUMN question_scores TEXT DEFAULT '{}'"
+                )
+            )
+        except Exception:
+            # 列已存在，忽略错误
+            pass
+        # 添加images字段到questions表
+        try:
+            await conn.execute(
+                __import__('sqlalchemy').text(
+                    "ALTER TABLE questions ADD COLUMN images TEXT DEFAULT '[]'"
+                )
+            )
+        except Exception:
+            # 列已存在，忽略错误
+            pass
 
     # 创建默认管理员
     await _ensure_admin_user()

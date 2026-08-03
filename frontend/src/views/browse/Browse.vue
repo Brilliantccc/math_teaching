@@ -6,6 +6,7 @@ import type { Question, QuestionListResponse } from '@/types'
 import { SearchOutlined, FileSearchOutlined } from '@ant-design/icons-vue'
 import SkeletonCard from '@/components/common/SkeletonCard.vue'
 import LatexText from '@/components/display/LatexText.vue'
+import QuestionPreview from '@/components/display/QuestionPreview.vue'
 
 const gradeStore = useGradeStore()
 
@@ -85,6 +86,17 @@ function getDifficultyColor(level: number) {
   }
 }
 
+// 解析images JSON字符串为数组
+function parseImages(images: string | undefined): string[] {
+  if (!images) return []
+  try {
+    const parsed = JSON.parse(images)
+    return Array.isArray(parsed) ? parsed : []
+  } catch {
+    return []
+  }
+}
+
 onMounted(() => {
   loadCategories()
   loadQuestions()
@@ -145,15 +157,11 @@ watch(() => gradeStore.currentGrade, () => {
       <template v-else>
         <a-spin :spinning="loading">
           <div v-for="q in questions" :key="q.id" class="question-card">
-            <div class="question-header">
-              <span class="question-title">
-                <LatexText :content="q.content || '（无内容）'" />
-              </span>
+            <QuestionPreview :content="q.content || '（无内容）'" :images="parseImages(q.images)" :show-images="true" />
+            <div class="question-footer">
               <a-tag :color="getDifficultyColor(q.difficulty)">
                 {{ getDifficultyText(q.difficulty) }}
               </a-tag>
-            </div>
-            <div class="question-footer">
               <span class="grade">{{ q.grade }}</span>
               <span v-if="q.category" class="category">{{ q.category }}</span>
             </div>
@@ -230,13 +238,22 @@ watch(() => gradeStore.currentGrade, () => {
 .question-card {
   border: 1px solid var(--color-border);
   border-radius: var(--radius-lg);
-  padding: 16px;
   margin-bottom: 12px;
   transition: box-shadow var(--transition-normal);
+  overflow: hidden;
 }
 
 .question-card:hover {
   box-shadow: var(--shadow-hover);
+}
+
+.question-card :deep(.question-preview) {
+  border: none;
+  border-radius: 0;
+}
+
+.question-card :deep(.question-preview:hover) {
+  box-shadow: none;
 }
 
 .question-header {
@@ -259,12 +276,19 @@ watch(() => gradeStore.currentGrade, () => {
 
 .question-footer {
   display: flex;
+  align-items: center;
   gap: 8px;
+  padding: 8px 16px;
+  background: var(--color-bg-page);
+  border-top: 1px solid var(--color-border);
 }
 
 .grade, .category {
   font-size: 12px;
-  color: var(--color-text-placeholder);
+  color: var(--color-text-secondary);
+  padding: 2px 8px;
+  background: var(--color-bg-container);
+  border-radius: 4px;
 }
 
 .pagination {

@@ -24,6 +24,7 @@ class Question(Base):
     difficulty: Mapped[int] = mapped_column(Integer, default=1)
     source: Mapped[str] = mapped_column(Text, default='')
     image_path: Mapped[str] = mapped_column(Text, default='')
+    images: Mapped[str] = mapped_column(Text, default='[]')  # JSON array: 多图片URL列表
     answer_analysis: Mapped[str] = mapped_column(Text, default='')  # 答案与解析合并在
     grade: Mapped[str] = mapped_column(Text, default='初一')
     category: Mapped[str] = mapped_column(Text, default='')
@@ -44,6 +45,7 @@ class Question(Base):
             "difficulty": self.difficulty,
             "source": self.source,
             "image_path": self.image_path,
+            "images": self.images,
             "answer_analysis": self.answer_analysis,
             "grade": self.grade,
             "category": self.category,

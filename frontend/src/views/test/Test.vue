@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { api } from '@/api'
 import { useGradeStore } from '@/stores'
@@ -7,7 +7,8 @@ import { GRADES } from '@/stores/grade'
 import { message } from 'ant-design-vue'
 import {
   SaveOutlined, ReloadOutlined, FileTextOutlined,
-  EyeOutlined, EyeInvisibleOutlined, DownloadOutlined
+  EyeOutlined, EyeInvisibleOutlined, DownloadOutlined,
+  DeleteOutlined, PlusOutlined
 } from '@ant-design/icons-vue'
 import LatexText from '@/components/display/LatexText.vue'
 
@@ -19,48 +20,181 @@ const saving = ref(false)
 const questions = ref<any[]>([])
 const testId = ref<number | null>(null)
 const showAnswer = ref(false)
-const scorePerQuestion = ref(10)
+
+// 分类列表（从数据库动态加载）
+const categories = ref<string[]>([])
+const categoryLoading = ref(false)
+
+// 每道题的分值：{question_id: score}
+const questionScores = ref<Record<number, number>>({})
+
+// 选中的题目（用于批量操作）
+const selectedQuestionIds = ref<number[]>([])
+
+// 按难度生成数量
+const difficultyCount = ref({
+  1: 5,   // 简单
+  2: 5,   // 中等
+  3: 5    // 困难
+})
 
 const formState = ref({
   name: '',
   count: 10,
   tags: [] as string[],
   difficulties: [1, 2, 3],
-  grade: gradeStore.currentGrade,
+  grade: gradeStore.currentGrade === '全部' ? '全部' : gradeStore.currentGrade,
   category: ''
 })
 
-const totalScore = computed(() => questions.value.length * scorePerQuestion.value)
+// 计算总分
+const totalScore = computed(() => {
+  return questions.value.reduce((sum, q) => {
+    return sum + (questionScores.value[q.id] || 10)
+  }, 0)
+})
+
+// 设置单道题的分值
+function setQuestionScore(questionId: number, score: number) {
+  questionScores.value[questionId] = score
+}
+
+// 删除单道题
+function removeQuestion(questionId: number) {
+  const index = questions.value.findIndex(q => q.id === questionId)
+  if (index !== -1) {
+    questions.value.splice(index, 1)
+    delete questionScores.value[questionId]
+    selectedQuestionIds.value = selectedQuestionIds.value.filter(id => id !== questionId)
+  }
+}
+
+// 批量删除选中的题目
+function removeSelectedQuestions() {
+  if (selectedQuestionIds.value.length === 0) {
+    message.warning('请先选择要删除的题目')
+    return
+  }
+  questions.value = questions.value.filter(q => !selectedQuestionIds.value.includes(q.id))
+  selectedQuestionIds.value.forEach(id => delete questionScores.value[id])
+  selectedQuestionIds.value = []
+  message.success('已删除选中的题目')
+}
+
+// 全选/取消全选
+function toggleSelectAll() {
+  if (selectedQuestionIds.value.length === questions.value.length) {
+    selectedQuestionIds.value = []
+  } else {
+    selectedQuestionIds.value = questions.value.map(q => q.id)
+  }
+}
+
+// 切换单题选中状态
+function toggleQuestionSelect(questionId: number) {
+  const index = selectedQuestionIds.value.indexOf(questionId)
+  if (index === -1) {
+    selectedQuestionIds.value.push(questionId)
+  } else {
+    selectedQuestionIds.value.splice(index, 1)
+  }
+}
+
+// 解析images JSON字符串为数组
+function parseImages(images: string | undefined): string[] {
+  if (!images) return []
+  try {
+    const parsed = JSON.parse(images)
+    return Array.isArray(parsed) ? parsed : []
+  } catch {
+    return []
+  }
+}
+
+// 清空所有题目
+function clearAllQuestions() {
+  questions.value = []
+  questionScores.value = {}
+  selectedQuestionIds.value = []
+  testId.value = null
+}
+
+// 加载分类列表
+async function loadCategories() {
+  categoryLoading.value = true
+  try {
+    const response = await api.get('/api/questions/categories')
+    categories.value = response.data.categories || []
+  } catch (error) {
+    console.error('Failed to load categories:', error)
+  } finally {
+    categoryLoading.value = false
+  }
+}
+
+onMounted(() => {
+  loadCategories()
+})
 
 const testName = computed(() => formState.value.name || `${formState.value.grade}数学试卷`)
 
-async function autoGenerate() {
+// 追加生成（在现有题目基础上添加）
+async function appendGenerate() {
   loading.value = true
-  questions.value = []
-  testId.value = null
   try {
-    const response = await api.post('/api/tests/auto', {
-      count: formState.value.count,
-      tags: formState.value.tags,
-      difficulties: formState.value.difficulties,
-      grade: formState.value.grade,
-      category: formState.value.category
-    })
-    const ids: number[] = response.data.question_ids
-    if (ids.length === 0) {
+    // 按难度分别生成
+    const allNewIds: number[] = []
+
+    // 将"全部"转换为空字符串
+    const gradeParam = formState.value.grade === '全部' ? '' : formState.value.grade
+
+    for (const [diff, count] of Object.entries(difficultyCount.value)) {
+      if (count > 0) {
+        const response = await api.post('/api/tests/auto', {
+          count: count,
+          tags: formState.value.tags,
+          difficulties: [parseInt(diff)],
+          grade: gradeParam,
+          category: formState.value.category
+        })
+        allNewIds.push(...response.data.question_ids)
+      }
+    }
+
+    if (allNewIds.length === 0) {
       message.warning('没有符合条件的题目')
       return
     }
+
+    // 获取新题目的详情
     const detailResp = await api.get('/api/questions/batch', {
-      params: { ids: ids.join(',') }
+      params: { ids: allNewIds.join(',') }
     })
-    questions.value = detailResp.data.questions
-    message.success(`已生成 ${ids.length} 道题目`)
+    const newQuestions = detailResp.data.questions
+
+    // 追加到现有题目（避免重复）
+    const existingIds = new Set(questions.value.map(q => q.id))
+    let addedCount = 0
+    for (const q of newQuestions) {
+      if (!existingIds.has(q.id)) {
+        questions.value.push(q)
+        questionScores.value[q.id] = 10 // 默认分值
+        addedCount++
+      }
+    }
+
+    message.success(`已追加 ${addedCount} 道题目`)
   } catch (error) {
     console.error('Failed to generate test:', error)
   } finally {
     loading.value = false
   }
+}
+
+// 清空重来
+async function regenerate() {
+  clearAllQuestions()
+  await appendGenerate()
 }
 
 async function saveTest() {
@@ -73,7 +207,8 @@ async function saveTest() {
     const response = await api.post('/api/tests', {
       name: testName.value,
       question_ids: questions.value.map(q => q.id),
-      score_per_question: scorePerQuestion.value
+      score_per_question: 10, // 保留默认值
+      question_scores: questionScores.value
     })
     testId.value = response.data.id
     message.success('试卷已保存')
@@ -144,40 +279,50 @@ function moveQuestion(index: number, direction: -1 | 1) {
           </a-col>
           <a-col :span="4">
             <a-form-item label="分类">
-              <a-select v-model:value="formState.category" allow-clear placeholder="全部" style="width: 100%">
-                <a-select-option value="数与式">数与式</a-select-option>
-                <a-select-option value="代数方程">代数方程</a-select-option>
-                <a-select-option value="几何">几何</a-select-option>
-                <a-select-option value="统计与概率">统计与概率</a-select-option>
+              <a-select
+                v-model:value="formState.category"
+                allow-clear
+                placeholder="全部"
+                style="width: 100%"
+                :loading="categoryLoading"
+                show-search
+                :filter-option="(input: string, option: any) => option.value.toLowerCase().includes(input.toLowerCase())"
+              >
+                <a-select-option v-for="c in categories" :key="c" :value="c">{{ c }}</a-select-option>
               </a-select>
-            </a-form-item>
-          </a-col>
-          <a-col :span="4">
-            <a-form-item label="题目数量">
-              <a-input-number v-model:value="formState.count" :min="1" :max="50" style="width: 100%" />
-            </a-form-item>
-          </a-col>
-          <a-col :span="4">
-            <a-form-item label="每题分值">
-              <a-input-number v-model:value="scorePerQuestion" :min="1" :max="100" style="width: 100%" />
             </a-form-item>
           </a-col>
         </a-row>
         <a-row :gutter="16">
-          <a-col :span="16">
-            <a-form-item label="难度">
-              <a-checkbox-group v-model:value="formState.difficulties">
-                <a-checkbox :value="1">简单</a-checkbox>
-                <a-checkbox :value="2">中等</a-checkbox>
-                <a-checkbox :value="3">困难</a-checkbox>
-              </a-checkbox-group>
+          <a-col :span="24">
+            <a-form-item label="按难度生成数量">
+              <div class="difficulty-config">
+                <div class="difficulty-item">
+                  <a-tag color="green">简单</a-tag>
+                  <a-input-number v-model:value="difficultyCount[1]" :min="0" :max="50" size="small" />
+                  <span class="unit">题</span>
+                </div>
+                <div class="difficulty-item">
+                  <a-tag color="orange">中等</a-tag>
+                  <a-input-number v-model:value="difficultyCount[2]" :min="0" :max="50" size="small" />
+                  <span class="unit">题</span>
+                </div>
+                <div class="difficulty-item">
+                  <a-tag color="red">困难</a-tag>
+                  <a-input-number v-model:value="difficultyCount[3]" :min="0" :max="50" size="small" />
+                  <span class="unit">题</span>
+                </div>
+              </div>
             </a-form-item>
           </a-col>
         </a-row>
         <a-form-item>
           <a-space>
-            <a-button type="primary" :loading="loading" @click="autoGenerate">
-              <ReloadOutlined /> 自动生成
+            <a-button type="primary" :loading="loading" @click="appendGenerate">
+              <PlusOutlined /> 追加生成
+            </a-button>
+            <a-button :loading="loading" @click="regenerate">
+              <ReloadOutlined /> 清空重来
             </a-button>
             <a-button :loading="saving" :disabled="questions.length === 0" @click="saveTest">
               <SaveOutlined /> 保存试卷
@@ -204,12 +349,25 @@ function moveQuestion(index: number, direction: -1 | 1) {
 
       <!-- 答案显示切换 -->
       <div class="paper-toolbar">
-        <a-button @click="showAnswer = !showAnswer" size="small">
-          <EyeInvisibleOutlined v-if="showAnswer" />
-          <EyeOutlined v-else />
-          {{ showAnswer ? '隐藏答案' : '显示答案' }}
-        </a-button>
-        <span class="score-info">共 {{ questions.length }} 题，每题 {{ scorePerQuestion }} 分，满分 {{ totalScore }} 分</span>
+        <div class="toolbar-left">
+          <a-checkbox :checked="selectedQuestionIds.length === questions.length && questions.length > 0" @change="toggleSelectAll">
+            全选
+          </a-checkbox>
+          <a-button v-if="selectedQuestionIds.length > 0" size="small" danger @click="removeSelectedQuestions">
+            <DeleteOutlined /> 删除选中 ({{ selectedQuestionIds.length }})
+          </a-button>
+          <a-button size="small" @click="clearAllQuestions">
+            清空
+          </a-button>
+        </div>
+        <div class="toolbar-right">
+          <a-button @click="showAnswer = !showAnswer" size="small">
+            <EyeInvisibleOutlined v-if="showAnswer" />
+            <EyeOutlined v-else />
+            {{ showAnswer ? '隐藏答案' : '显示答案' }}
+          </a-button>
+          <span class="score-info">共 {{ questions.length }} 题，满分 {{ totalScore }} 分</span>
+        </div>
       </div>
 
       <!-- 题目列表 -->
@@ -217,17 +375,38 @@ function moveQuestion(index: number, direction: -1 | 1) {
         <div v-for="(q, index) in questions" :key="q.id" class="question-item">
           <div class="question-row">
             <div class="question-left">
+              <a-checkbox
+                :checked="selectedQuestionIds.includes(q.id)"
+                @change="() => toggleQuestionSelect(q.id)"
+                style="margin-right: 8px"
+              />
               <div class="question-number">
                 <span class="num">{{ index + 1 }}.</span>
-                <span class="score">（{{ scorePerQuestion }}分）</span>
+                <a-tag :color="q.difficulty === 1 ? 'green' : q.difficulty === 2 ? 'orange' : 'red'" size="small">
+                  {{ q.difficulty === 1 ? '简单' : q.difficulty === 2 ? '中等' : '困难' }}
+                </a-tag>
               </div>
               <div class="question-content">
-                <LatexText :content="q.content" />
+                <LatexText :content="q.content" :images="parseImages(q.images)" />
               </div>
             </div>
-            <div class="question-actions">
-              <a-button size="small" :disabled="index === 0" @click="moveQuestion(index, -1)">↑</a-button>
-              <a-button size="small" :disabled="index === questions.length - 1" @click="moveQuestion(index, 1)">↓</a-button>
+            <div class="question-right">
+              <div class="score-input">
+                <a-input-number
+                  :value="questionScores[q.id] || 10"
+                  :min="1"
+                  :max="100"
+                  size="small"
+                  style="width: 70px"
+                  @change="(val: number) => setQuestionScore(q.id, val || 10)"
+                />
+                <span class="score-unit">分</span>
+              </div>
+              <div class="question-actions">
+                <a-button size="small" :disabled="index === 0" @click="moveQuestion(index, -1)">↑</a-button>
+                <a-button size="small" :disabled="index === questions.length - 1" @click="moveQuestion(index, 1)">↓</a-button>
+                <a-button size="small" danger @click="removeQuestion(q.id)">×</a-button>
+              </div>
             </div>
           </div>
 
@@ -274,6 +453,52 @@ function moveQuestion(index: number, direction: -1 | 1) {
   margin-top: 16px;
 }
 
+/* 难度配置 */
+.difficulty-config {
+  display: flex;
+  gap: 24px;
+  align-items: center;
+}
+
+.difficulty-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.unit {
+  font-size: 13px;
+  color: var(--color-text-muted);
+}
+
+/* 工具栏 */
+.paper-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+  padding: 8px 12px;
+  background: var(--color-bg-hover);
+  border-radius: var(--radius-md);
+}
+
+.toolbar-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.toolbar-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.score-info {
+  font-size: 13px;
+  color: var(--color-text-muted);
+}
+
 /* 试卷预览 */
 .paper-preview {
   margin-top: 24px;
@@ -306,21 +531,6 @@ function moveQuestion(index: number, direction: -1 | 1) {
   color: #666;
 }
 
-.paper-toolbar {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 20px;
-  padding: 8px 12px;
-  background: var(--color-bg-hover);
-  border-radius: var(--radius-md);
-}
-
-.score-info {
-  font-size: 13px;
-  color: var(--color-text-muted);
-}
-
 /* 题目列表 */
 .question-list {
   display: flex;
@@ -348,7 +558,7 @@ function moveQuestion(index: number, direction: -1 | 1) {
 
 .question-number {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   gap: 6px;
   margin-bottom: 8px;
 }
@@ -370,9 +580,22 @@ function moveQuestion(index: number, direction: -1 | 1) {
   color: #333;
 }
 
-.question-actions {
+.question-right {
   display: flex;
   flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+  min-width: 100px;
+}
+
+.score-input {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.question-actions {
+  display: flex;
   gap: 4px;
   opacity: 0;
   transition: opacity 0.2s;

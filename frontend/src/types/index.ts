@@ -37,6 +37,7 @@ export interface Question {
   difficulty: number
   source: string
   image_path: string
+  images: string  // JSON数组格式的图片路径列表
   answer_analysis: string
   grade: string
   category: string
@@ -75,9 +76,28 @@ export interface Test {
   id: number
   name: string
   question_ids: string
+  score_per_question: number
+  question_scores: string | null
   created_by: number | null
   created_at: string | null
   questions?: Question[]
+}
+
+/** 组卷创建请求 */
+export interface TestCreateRequest {
+  name?: string
+  question_ids: number[]
+  score_per_question?: number
+  question_scores?: Record<number, number>
+}
+
+/** 自动生成组卷请求 */
+export interface AutoGenerateRequest {
+  tags?: string[]
+  count?: number
+  difficulties?: number[]
+  grade?: string
+  category?: string
 }
 
 /** 错题类型 */
@@ -182,3 +202,64 @@ export interface LLMExtractResult {
 export interface LLMAnalyzeResult {
   answer_analysis: string
 }
+
+/** 练习会话请求 */
+export interface PracticeSessionRequest {
+  tag?: string
+  grade?: string
+  count?: number
+}
+
+/** 提交答案请求 */
+export interface SubmitAnswerRequest {
+  question_id: number
+  answer?: string
+}
+
+/** 修改密码请求 */
+export interface ChangePasswordRequest {
+  old_password: string
+  new_password: string
+  confirm_password: string
+}
+
+/** 重置密码请求 */
+export interface ResetPasswordRequest {
+  username: string
+  reset_code: string
+  new_password: string
+}
+
+/** 批量删除请求 */
+export interface BatchDeleteRequest {
+  ids: number[]
+}
+
+/** 批量更新请求 */
+export interface BatchUpdateRequest {
+  ids: number[]
+  updates: Record<string, any>
+}
+
+/** 批量更新分类请求 */
+export interface BatchUpdateCategoriesRequest {
+  ids: number[]
+  category: string
+}
+
+/** 错题重练请求 */
+export interface RetryWrongQuestionsRequest {
+  count?: number
+}
+
+/** 年级选项 */
+export type GradeOption = '初一' | '初二' | '初三' | '高一' | '高二' | '高三'
+
+/** 难度选项 */
+export type DifficultyOption = 1 | 2 | 3
+
+/** 角色选项 */
+export type RoleOption = 'student' | 'teacher' | 'admin'
+
+/** 标准分类 */
+export type CategoryOption = '代数' | '函数' | '几何' | '统计与概率' | '数与计算' | '图形与变换' | '综合'

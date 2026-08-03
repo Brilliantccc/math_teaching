@@ -36,6 +36,17 @@ async function toggleMastered(id: number) {
   }
 }
 
+// 解析images JSON字符串为数组
+function parseImages(images: string | undefined): string[] {
+  if (!images) return []
+  try {
+    const parsed = JSON.parse(images)
+    return Array.isArray(parsed) ? parsed : []
+  } catch {
+    return []
+  }
+}
+
 onMounted(() => {
   loadWrongQuestions()
 })
@@ -48,12 +59,12 @@ onMounted(() => {
     <a-spin :spinning="loading">
       <div v-for="item in wrongQuestions" :key="item.id" class="wrong-item">
         <div class="question-header">
-          <span class="title">{{ item.question?.title || '（无标题）' }}</span>
+          <span class="title">{{ item.question?.content?.substring(0, 30) || '（无内容）' }}</span>
           <a-tag :color="item.mastered ? 'success' : 'error'">
             {{ item.mastered ? '已掌握' : '未掌握' }}
           </a-tag>
         </div>
-        <div class="question-content"><LatexText :content="item.question?.content || ''" /></div>
+        <div class="question-content"><LatexText :content="item.question?.content || ''" :images="parseImages(item.question?.images)" /></div>
         <div class="question-footer">
           <span class="wrong-count">错误 {{ item.wrong_count }} 次</span>
           <a-button type="link" @click="toggleMastered(item.id)">

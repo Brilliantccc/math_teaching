@@ -2,9 +2,12 @@
 import { computed } from 'vue'
 import { renderMathText } from '@/utils/math-render'
 
-const props = defineProps<{ content: string }>()
+const props = defineProps<{
+  content: string
+  images?: string[]
+}>()
 
-const html = computed(() => renderMathText(props.content))
+const html = computed(() => renderMathText(props.content, props.images))
 </script>
 
 <template>

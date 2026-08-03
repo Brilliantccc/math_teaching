@@ -32,7 +32,7 @@ async function startPractice() {
   loading.value = true
   try {
     const response = await api.post('/api/practice/session', {
-      grade: gradeStore.currentGrade,
+      grade: gradeStore.getGradeParam(),
       count: formState.count,
       tag: formState.tag
     })
@@ -105,6 +105,17 @@ function endPractice() {
   message.info('已结束练习')
 }
 
+// 解析images JSON字符串为数组
+function parseImages(images: string | undefined): string[] {
+  if (!images) return []
+  try {
+    const parsed = JSON.parse(images)
+    return Array.isArray(parsed) ? parsed : []
+  } catch {
+    return []
+  }
+}
+
 function handleCelebrationDone() {
   showCelebration.value = false
 }
@@ -153,7 +164,7 @@ function handleCelebrationDone() {
           </a-tag>
         </div>
         <div class="question-title">{{ currentQuestion.title }}</div>
-        <div class="question-content"><LatexText :content="currentQuestion.content" /></div>
+        <div class="question-content"><LatexText :content="currentQuestion.content" :images="parseImages(currentQuestion.images)" /></div>
 
         <a-divider />
 

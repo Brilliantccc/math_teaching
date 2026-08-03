@@ -1,6 +1,6 @@
 """组卷相关模型"""
 
-from typing import Optional, List
+from typing import Optional, List, Dict
 from pydantic import BaseModel, Field
 
 
@@ -9,6 +9,7 @@ class TestCreate(BaseModel):
     name: Optional[str] = None
     question_ids: List[int] = []
     score_per_question: int = 10
+    question_scores: Optional[Dict[int, int]] = None  # 每道题的分值：{question_id: score}
 
 
 class TestResponse(BaseModel):
@@ -17,6 +18,7 @@ class TestResponse(BaseModel):
     name: str
     question_ids: str
     score_per_question: int = 10
+    question_scores: Optional[str] = None
     created_by: Optional[int] = None
     created_at: Optional[str] = None
     questions: Optional[List[dict]] = None
@@ -40,3 +42,4 @@ class PreviewPdfRequest(BaseModel):
     """预览导出PDF请求"""
     question_ids: List[int]
     title: str = '数学试卷'
+    question_scores: Optional[Dict[int, int]] = None

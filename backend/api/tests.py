@@ -51,10 +51,20 @@ async def create_test(
     name = data.name or f"试卷_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
     question_ids = json.dumps(data.question_ids, ensure_ascii=False)
 
+    # 处理每道题的分值
+    question_scores = {}
+    if data.question_scores:
+        question_scores = data.question_scores
+    else:
+        # 使用统一分值
+        for qid in data.question_ids:
+            question_scores[qid] = data.score_per_question
+
     test = Test(
         name=name,
         question_ids=question_ids,
         score_per_question=data.score_per_question,
+        question_scores=json.dumps(question_scores, ensure_ascii=False),
         created_by=current_user.id
     )
     db.add(test)
@@ -156,6 +166,16 @@ async def export_test_pdf(
     questions = result.scalars().all()
     questions_data = [q.to_dict() for q in questions]
 
+    # 解析question_scores
+    question_scores = {}
+    if test.question_scores:
+        try:
+            question_scores = json.loads(test.question_scores)
+            # 将字符串key转换为int
+            question_scores = {int(k): v for k, v in question_scores.items()}
+        except:
+            pass
+
     # 生成PDF（需要导入pdf_utils）
     from backend.utils.pdf_utils import generate_test_pdf
     output_path = os.path.join(settings.UPLOAD_DIR, f"test_{t_id}_{uuid.uuid4().hex}.pdf")
@@ -165,7 +185,7 @@ async def export_test_pdf(
         generate_test_pdf(
             questions_data, output_path,
             title=test.name or "数学试卷",
-            score_per_question=test.score_per_question or 10
+            question_scores=question_scores if question_scores else None
         )
         return FileResponse(
             output_path,
@@ -197,7 +217,11 @@ async def export_preview_pdf(
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
 
     try:
-        generate_test_pdf(questions_data, output_path, title=data.title)
+        generate_test_pdf(
+            questions_data, output_path,
+            title=data.title,
+            question_scores=data.question_scores
+        )
         return FileResponse(
             output_path,
             media_type="application/pdf",

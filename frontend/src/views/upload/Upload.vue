@@ -18,9 +18,11 @@ const mode = ref<'single' | 'batch'>('single')
 const formState = reactive({
   stem: '',
   answer_analysis: '',
-  grade: gradeStore.currentGrade,
+  grade: gradeStore.currentGrade === '全部' ? '初一' : gradeStore.currentGrade,
   category: '',
-  difficulty: 1
+  difficulty: 1,
+  image_descriptions: [] as string[],
+  croppedImages: [] as string[] // AI裁剪后的图片路径
 })
 const fileList = ref<any[]>([])
 
@@ -32,8 +34,10 @@ const batchQuestions = ref<Array<{
   grade: string
   category: string
   difficulty: number
-  imageFile?: File
-  imagePreview?: string
+  imageFiles?: File[]
+  imagePreviews?: string[]
+  image_descriptions?: string[]
+  croppedImages?: string[] // AI裁剪后的图片路径
 }>>([])
 const editingIndex = ref<number | null>(null)
 
@@ -54,6 +58,90 @@ onMounted(async () => {
     // LLM 未配置或未登录，静默处理
   }
 })
+
+// ========== 剪贴板和拖放支持 ==========
+
+function handlePaste(e: ClipboardEvent) {
+  const items = e.clipboardData?.items
+  if (!items) return
+
+  for (let i = 0; i < items.length; i++) {
+    if (items[i].type.indexOf('image') !== -1) {
+      const blob = items[i].getAsFile()
+      if (blob) {
+        const file = new File([blob], `paste_${Date.now()}.png`, { type: 'image/png' })
+        fileList.value.push({
+          uid: `-${Date.now()}`,
+          name: file.name,
+          status: 'done',
+          originFileObj: file,
+          url: URL.createObjectURL(file)
+        })
+        message.success('已粘贴图片')
+      }
+      e.preventDefault()
+      break
+    }
+  }
+}
+
+function handleDrop(e: DragEvent) {
+  const files = e.dataTransfer?.files
+  if (!files) return
+
+  Array.from(files).forEach(file => {
+    if (file.type.startsWith('image/')) {
+      fileList.value.push({
+        uid: `-${Date.now()}_${file.name}`,
+        name: file.name,
+        status: 'done',
+        originFileObj: file,
+        url: URL.createObjectURL(file)
+      })
+    }
+  })
+}
+
+function handleBatchPaste(e: ClipboardEvent) {
+  const items = e.clipboardData?.items
+  if (!items) return
+
+  for (let i = 0; i < items.length; i++) {
+    if (items[i].type.indexOf('image') !== -1) {
+      const blob = items[i].getAsFile()
+      if (blob) {
+        const file = new File([blob], `paste_${Date.now()}.png`, { type: 'image/png' })
+        batchFileList.value.push({
+          uid: `-${Date.now()}`,
+          name: file.name,
+          status: 'done',
+          originFileObj: file,
+          url: URL.createObjectURL(file)
+        })
+        message.success('已粘贴图片')
+      }
+      e.preventDefault()
+      break
+    }
+  }
+}
+
+function handleBatchDrop(e: DragEvent) {
+  const files = e.dataTransfer?.files
+  if (!files) return
+
+  Array.from(files).forEach(file => {
+    if (file.type.startsWith('image/')) {
+      batchFileList.value.push({
+        uid: `-${Date.now()}_${file.name}`,
+        name: file.name,
+        status: 'done',
+        originFileObj: file,
+        url: URL.createObjectURL(file)
+      })
+    }
+  })
+}
 
 // ========== 单题模式 ==========
 
@@ -87,6 +175,14 @@ async function handleAIExtract() {
         if (data.answer_analysis) formState.answer_analysis = data.answer_analysis
         if (data.difficulty) formState.difficulty = data.difficulty
         if (data.category) formState.category = data.category
+        // 存储图片描述和裁剪后的图片路径
+        if (data.image_descriptions) {
+          formState.image_descriptions = data.image_descriptions
+        }
+        // 保存裁剪后的图片路径到 formState
+        if (data.cropped_images && data.cropped_images.length > 0) {
+          formState.croppedImages = data.cropped_images
+        }
         singleProgress.value = ''
         message.success('AI 识别完成，已自动填充表单')
       } else {
@@ -97,7 +193,14 @@ async function handleAIExtract() {
             answer_analysis: data.answer_analysis || '',
             grade: formState.grade,
             category: data.category || '',
-            difficulty: data.difficulty || 1
+            difficulty: data.difficulty || 1,
+            // 如果有裁剪后的图片，使用裁剪后的；否则使用原始图片
+            imageFiles: [],
+            imagePreviews: data.cropped_images && data.cropped_images.length > 0
+              ? data.cropped_images.map((img: string) => img.startsWith('http') ? img : `${api.defaults.baseURL}/${img}`)
+              : [],
+            image_descriptions: data.image_descriptions || [],
+            croppedImages: data.cropped_images || []
           })
         })
         mode.value = 'batch'
@@ -127,7 +230,7 @@ async function handleAIAnalyze() {
   aiAnalyzeLoading.value = true
   analyzeProgress.value = 'AI 正在分析题目...'
   try {
-    const result = await analyzeQuestion(formState.stem)
+    const result = await analyzeQuestion(formState.stem, formState.image_descriptions)
     if (result.success && result.data) {
       analyzeProgress.value = '生成完成，正在填充...'
       if (result.data.answer_analysis) formState.answer_analysis = result.data.answer_analysis
@@ -159,8 +262,18 @@ async function handleSubmit() {
     formData.append('grade', formState.grade)
     formData.append('category', formState.category)
     formData.append('difficulty', String(formState.difficulty))
-    if (fileList.value.length > 0) {
-      formData.append('image', fileList.value[0].originFileObj)
+
+    // 如果有AI裁剪后的图片，使用裁剪后的路径
+    if (formState.croppedImages && formState.croppedImages.length > 0) {
+      formData.append('existing_images', JSON.stringify(formState.croppedImages))
+    } else if (fileList.value.length > 0) {
+      // 否则上传原始图片
+      fileList.value.forEach(fileObj => {
+        const file = fileObj.originFileObj || fileObj
+        if (file instanceof File) {
+          formData.append('images', file)
+        }
+      })
     }
 
     const response = await api.post('/api/questions', formData, {
@@ -202,14 +315,20 @@ async function handleBatchAIExtract() {
       if (result.success && result.data) {
         const items = Array.isArray(result.data) ? result.data : [result.data]
         items.forEach((data: any) => {
+          // 如果有裁剪后的图片，使用裁剪后的；否则使用原始图片
+          const hasCroppedImages = data.cropped_images && data.cropped_images.length > 0
           newQuestions.push({
             content: data?.content || '',
             answer_analysis: data?.answer_analysis || '',
             grade: formState.grade,
             category: data?.category || '',
             difficulty: data?.difficulty || 1,
-            imageFile: files[idx],
-            imagePreview: URL.createObjectURL(files[idx])
+            imageFiles: [],
+            imagePreviews: hasCroppedImages
+              ? data.cropped_images.map((img: string) => img.startsWith('http') ? img : `${api.defaults.baseURL}/${img}`)
+              : [URL.createObjectURL(files[idx])],
+            image_descriptions: data?.image_descriptions || [],
+            croppedImages: data.cropped_images || []
           })
         })
         successCount++
@@ -245,7 +364,10 @@ function addBatchQuestion() {
     answer_analysis: '',
     grade: formState.grade,
     category: '',
-    difficulty: 1
+    difficulty: 1,
+    imageFiles: [],
+    imagePreviews: [],
+    image_descriptions: []
   })
   editingIndex.value = batchQuestions.value.length - 1
 }
@@ -271,7 +393,7 @@ async function handleBatchAIAnalyze(index: number) {
   aiAnalyzeLoading.value = true
   batchProgress.value = `正在为第 ${index + 1} 题生成答案解析...`
   try {
-    const result = await analyzeQuestion(q.content)
+    const result = await analyzeQuestion(q.content, q.image_descriptions)
     if (result.success && result.data) {
       if (result.data.answer_analysis) q.answer_analysis = result.data.answer_analysis
       batchProgress.value = ''
@@ -299,7 +421,7 @@ async function handleBatchSave() {
   let successCount = 0
   let duplicateCount = 0
   try {
-    // 逐个上传（支持图片）
+    // 逐个上传（支持多图片）
     for (const q of validQuestions) {
       const formData = new FormData()
       formData.append('content', q.content)
@@ -307,9 +429,17 @@ async function handleBatchSave() {
       formData.append('grade', q.grade)
       formData.append('category', q.category)
       formData.append('difficulty', String(q.difficulty))
-      if (q.imageFile) {
-        formData.append('image', q.imageFile)
+
+      // 如果有AI裁剪后的图片，使用裁剪后的路径
+      if (q.croppedImages && q.croppedImages.length > 0) {
+        formData.append('existing_images', JSON.stringify(q.croppedImages))
+      } else if (q.imageFiles && q.imageFiles.length > 0) {
+        // 否则上传原始图片
+        q.imageFiles.forEach(file => {
+          formData.append('images', file)
+        })
       }
+
       const response = await api.post('/api/questions', formData, {
         headers: { 'Content-Type': 'multipart/form-data' }
       })
@@ -362,15 +492,24 @@ const hasBatchContent = computed(() => batchQuestions.value.some(q => q.content.
           />
         </a-form-item>
 
-        <a-form-item label="图片">
-          <a-upload
-            v-model:file-list="fileList"
-            :before-upload="() => false"
-            list-type="picture"
-            :max-count="1"
+        <a-form-item label="图片（支持多张）">
+          <div
+            class="upload-area"
+            @paste="handlePaste"
+            @drop.prevent="handleDrop"
+            @dragover.prevent
+            tabindex="0"
           >
-            <a-button>选择图片</a-button>
-          </a-upload>
+            <a-upload
+              v-model:file-list="fileList"
+              :before-upload="() => false"
+              list-type="picture"
+              :max-count="5"
+            >
+              <a-button>选择图片</a-button>
+            </a-upload>
+            <div class="upload-hint">支持粘贴截图 (Ctrl+V) 或拖放图片</div>
+          </div>
         </a-form-item>
 
         <a-form-item>
@@ -447,17 +586,26 @@ const hasBatchContent = computed(() => batchQuestions.value.some(q => q.content.
       <div class="batch-section">
         <a-form layout="vertical" style="max-width: 800px">
           <a-form-item label="选择图片（支持单张多题或多张单题）">
-            <a-upload
-              v-model:file-list="batchFileList"
-              :before-upload="() => false"
-              list-type="picture-card"
-              :multiple="true"
+            <div
+              class="upload-area"
+              @paste="handleBatchPaste"
+              @drop.prevent="handleBatchDrop"
+              @dragover.prevent
+              tabindex="0"
             >
-              <div v-if="batchFileList.length < 20">
-                <plus-outlined />
-                <div style="margin-top: 8px">上传图片</div>
-              </div>
-            </a-upload>
+              <a-upload
+                v-model:file-list="batchFileList"
+                :before-upload="() => false"
+                list-type="picture-card"
+                :multiple="true"
+              >
+                <div v-if="batchFileList.length < 20">
+                  <plus-outlined />
+                  <div style="margin-top: 8px">上传图片</div>
+                </div>
+              </a-upload>
+              <div class="upload-hint">支持粘贴截图 (Ctrl+V) 或拖放图片</div>
+            </div>
           </a-form-item>
 
           <a-form-item label="默认年级">
@@ -505,7 +653,10 @@ const hasBatchContent = computed(() => batchQuestions.value.some(q => q.content.
             <div class="batch-item-header" @click="editBatchQuestion(index)">
               <div class="batch-item-info">
                 <span class="batch-item-index">{{ index + 1 }}.</span>
-                <img v-if="q.imagePreview" :src="q.imagePreview" class="batch-item-thumb" />
+                <div v-if="q.imagePreviews && q.imagePreviews.length > 0" class="batch-item-thumbs">
+                  <img v-for="(preview, imgIdx) in q.imagePreviews.slice(0, 3)" :key="imgIdx" :src="preview" class="batch-item-thumb" />
+                  <span v-if="q.imagePreviews.length > 3" class="batch-item-more">+{{ q.imagePreviews.length - 3 }}</span>
+                </div>
                 <span class="batch-item-content">
                   <LatexText :content="q.content || '（未识别到内容）'" />
                 </span>
@@ -614,6 +765,25 @@ const hasBatchContent = computed(() => batchQuestions.value.some(q => q.content.
   margin-top: 4px;
 }
 
+.upload-area {
+  border: 2px dashed var(--color-border);
+  border-radius: 8px;
+  padding: 16px;
+  text-align: center;
+  transition: all 0.3s;
+}
+
+.upload-area:focus {
+  border-color: var(--color-primary);
+  outline: none;
+}
+
+.upload-hint {
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--color-text-muted);
+}
+
 .batch-progress {
   display: flex;
   align-items: center;
@@ -698,6 +868,24 @@ const hasBatchContent = computed(() => batchQuestions.value.some(q => q.content.
   object-fit: cover;
   border-radius: 4px;
   flex-shrink: 0;
+}
+
+.batch-item-thumbs {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.batch-item-more {
+  width: 48px;
+  height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--color-bg-elevated, #f5f5f5);
+  border-radius: 4px;
+  font-size: 12px;
+  color: var(--color-text-muted);
 }
 
 .batch-item-content {

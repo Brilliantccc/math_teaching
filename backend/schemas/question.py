@@ -26,6 +26,8 @@ class QuestionUpdate(BaseModel):
     answer_analysis: Optional[str] = None
     grade: Optional[str] = None
     category: Optional[str] = None
+    image_path: Optional[str] = None
+    images: Optional[str] = None
 
 
 class QuestionResponse(BaseModel):
@@ -36,6 +38,7 @@ class QuestionResponse(BaseModel):
     difficulty: int
     source: str
     image_path: str
+    images: str = '[]'  # JSON array: 多图片URL列表
     answer_analysis: str
     grade: str
     category: str
@@ -62,6 +65,7 @@ class QuestionBatchItem(BaseModel):
     category: str = ''
     difficulty: int = 1
     image_path: str = ''
+    images: str = '[]'  # JSON array: 多图片URL列表
 
 
 class BatchCreateRequest(BaseModel):

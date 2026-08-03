@@ -12,7 +12,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import JSONResponse
 
-from backend.config import settings
+from backend.config import settings, validate_config, print_config
 from backend.database import init_db
 from backend.api import api_router
 
@@ -20,6 +20,10 @@ from backend.api import api_router
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """应用生命周期"""
+    # 打印配置信息
+    print_config()
+    # 验证配置
+    validate_config()
     # 确保数据目录存在
     data_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data')
     os.makedirs(data_dir, exist_ok=True)
@@ -64,8 +68,35 @@ async def root():
 
 @app.get("/health")
 async def health():
-    """健康检查"""
-    return {"status": "ok"}
+    """健康检查 - 返回系统状态"""
+    from backend.config import settings
+    from datetime import datetime
+
+    # 检查数据库状态
+    db_status = "ok"
+    try:
+        from backend.database import async_session
+        async with async_session() as session:
+            await session.execute(__import__('sqlalchemy').text("SELECT 1"))
+    except Exception as e:
+        db_status = f"error: {str(e)}"
+
+    # 检查LLM配置
+    llm_configured = bool(settings.LLM_API_KEY and settings.LLM_BASE_URL)
+
+    return {
+        "status": "ok",
+        "timestamp": datetime.now().isoformat(),
+        "version": "2.0.0",
+        "services": {
+            "database": db_status,
+            "llm_configured": llm_configured,
+        },
+        "config": {
+            "app_name": settings.APP_NAME,
+            "debug": settings.DEBUG,
+        }
+    }
 
 
 @app.exception_handler(404)

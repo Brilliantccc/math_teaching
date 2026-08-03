@@ -2,12 +2,12 @@
 
 import os
 import uuid
-from typing import Optional
+from typing import Optional, List
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Query
 from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, or_
+from sqlalchemy import select, or_, func
 from sqlalchemy.orm import selectinload
 
 from backend.core.deps import get_db, get_current_user, require_teacher
@@ -23,6 +23,22 @@ from backend.config import settings
 router = APIRouter()
 
 ALLOWED_IMAGE_EXTENSIONS = {'jpg', 'jpeg', 'png', 'gif', 'bmp'}
+
+
+@router.get("/categories")
+async def get_categories(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """获取所有已使用的分类"""
+    result = await db.execute(
+        select(Question.category)
+        .where(Question.category != '')
+        .distinct()
+        .order_by(Question.category)
+    )
+    categories = [row[0] for row in result.all()]
+    return {"categories": categories}
 
 
 @router.get("", response_model=QuestionListResponse)
@@ -83,10 +99,14 @@ async def create_question(
     paper_id: Optional[int] = Form(default=None),
     paper_question_number: Optional[int] = Form(default=None),
     image: Optional[UploadFile] = File(default=None),
+    images: Optional[List[UploadFile]] = File(default=None),
+    existing_images: str = Form(default='[]'),  # 已有的图片路径（JSON数组）
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_teacher)
 ):
     """创建新题目"""
+    import json
+    print(f"[DB] Creating question with answer_analysis: {answer_analysis[:200] if answer_analysis else 'N/A'}")
     # 检查是否已存在相同内容的题目
     if content and content.strip():
         existing = await db.execute(
@@ -101,8 +121,19 @@ async def create_question(
             }
 
     image_path = ""
+    images_list = []
 
-    # 处理图片上传
+    # 解析已有的图片路径（AI裁剪后的图片）
+    try:
+        existing_images_list = json.loads(existing_images) if existing_images else []
+        if existing_images_list:
+            images_list.extend(existing_images_list)
+            if not image_path and existing_images_list:
+                image_path = existing_images_list[0]
+    except:
+        pass
+
+    # 处理单张图片上传（兼容旧版本）
     if image and image.filename:
         ext = image.filename.rsplit(".", 1)[-1].lower()
         if ext in ALLOWED_IMAGE_EXTENSIONS:
@@ -113,10 +144,30 @@ async def create_question(
                 content_bytes = await image.read()
                 f.write(content_bytes)
             image_path = f"uploads/{filename}"
+            images_list.append(image_path)
+
+    # 处理多图片上传
+    if images:
+        for img in images:
+            if img and img.filename:
+                ext = img.filename.rsplit(".", 1)[-1].lower()
+                if ext in ALLOWED_IMAGE_EXTENSIONS:
+                    filename = f"{uuid.uuid4().hex}_{img.filename}"
+                    upload_path = os.path.join(settings.UPLOAD_DIR, filename)
+                    os.makedirs(os.path.dirname(upload_path), exist_ok=True)
+                    with open(upload_path, "wb") as f:
+                        content_bytes = await img.read()
+                        f.write(content_bytes)
+                    img_path = f"uploads/{filename}"
+                    images_list.append(img_path)
+                    # 如果没有单张图片，使用第一张作为image_path
+                    if not image_path:
+                        image_path = img_path
 
     question = Question(
         content=content, tags=tags, difficulty=difficulty,
-        source=source, image_path=image_path, answer_analysis=answer_analysis,
+        source=source, image_path=image_path, images=json.dumps(images_list, ensure_ascii=False),
+        answer_analysis=answer_analysis,
         grade=grade, category=category,
         paper_id=paper_id,
         paper_question_number=paper_question_number,
@@ -292,7 +343,15 @@ async def get_question(
 @router.put("/{q_id}", response_model=dict)
 async def update_question(
     q_id: int,
-    data: QuestionUpdate,
+    content: str = Form(default=None),
+    tags: str = Form(default=None),
+    difficulty: int = Form(default=None),
+    source: str = Form(default=None),
+    answer_analysis: str = Form(default=None),
+    grade: str = Form(default=None),
+    category: str = Form(default=None),
+    existing_images: str = Form(default='[]'),
+    images: Optional[List[UploadFile]] = File(default=None),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_teacher)
 ):
@@ -301,9 +360,39 @@ async def update_question(
     if not question:
         raise NotFoundException("题目")
 
-    update_data = data.model_dump(exclude_unset=True)
-    for key, value in update_data.items():
-        setattr(question, key, value)
+    # 更新基本字段
+    if content is not None: question.content = content
+    if tags is not None: question.tags = tags
+    if difficulty is not None: question.difficulty = difficulty
+    if source is not None: question.source = source
+    if answer_analysis is not None: question.answer_analysis = answer_analysis
+    if grade is not None: question.grade = grade
+    if category is not None: question.category = category
+
+    # 处理图片
+    import json
+    images_list = json.loads(existing_images) if existing_images else []
+    image_path = images_list[0] if images_list else ""
+
+    # 处理新上传的图片
+    if images:
+        for img in images:
+            if img and img.filename:
+                ext = img.filename.rsplit(".", 1)[-1].lower()
+                if ext in ALLOWED_IMAGE_EXTENSIONS:
+                    filename = f"{uuid.uuid4().hex}_{img.filename}"
+                    upload_path = os.path.join(settings.UPLOAD_DIR, filename)
+                    os.makedirs(os.path.dirname(upload_path), exist_ok=True)
+                    with open(upload_path, "wb") as f:
+                        content_bytes = await img.read()
+                        f.write(content_bytes)
+                    img_path = f"uploads/{filename}"
+                    images_list.append(img_path)
+                    if not image_path:
+                        image_path = img_path
+
+    question.image_path = image_path
+    question.images = json.dumps(images_list, ensure_ascii=False)
 
     await db.commit()
     return {"message": "题目已更新"}

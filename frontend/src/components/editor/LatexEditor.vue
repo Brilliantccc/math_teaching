@@ -4,11 +4,13 @@ import { renderMathText } from '@/utils/math-render'
 
 const props = withDefaults(defineProps<{
   modelValue: string
+  images?: string[]
   rows?: number
   placeholder?: string
 }>(), {
   rows: 4,
-  placeholder: '输入内容（公式用 $...$ 包裹，中文用 \\text{中文}）'
+  placeholder: '输入内容（公式用 $...$ 包裹，中文用 \\text{中文}）',
+  images: () => []
 })
 
 const emit = defineEmits<{
@@ -22,17 +24,18 @@ const previewHtml = computed(() => {
   if (!props.modelValue) {
     return '在编辑区输入内容，这里会实时显示渲染结果'
   }
-  return renderMathText(props.modelValue)
+  return renderMathText(props.modelValue, props.images)
 })
 
-function insertSymbol(before: string, after: string) {
+function insertSymbol(before: string, after?: string) {
   const el = textareaRef.value
   if (!el) return
 
   const start = el.selectionStart
   const end = el.selectionEnd
   const selected = props.modelValue.substring(start, end)
-  const newValue = props.modelValue.substring(0, start) + before + selected + after + props.modelValue.substring(end)
+  const afterStr = after || ''
+  const newValue = props.modelValue.substring(0, start) + before + selected + afterStr + props.modelValue.substring(end)
 
   emit('update:modelValue', newValue)
 

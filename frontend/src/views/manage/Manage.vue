@@ -7,6 +7,7 @@ import type { Question, QuestionListResponse } from '@/types'
 import { message, Modal } from 'ant-design-vue'
 import { PlusOutlined, DeleteOutlined, EditOutlined, ClearOutlined } from '@ant-design/icons-vue'
 import LatexText from '@/components/display/LatexText.vue'
+import QuestionPreview from '@/components/display/QuestionPreview.vue'
 
 const gradeStore = useGradeStore()
 
@@ -100,6 +101,17 @@ async function batchDelete() {
   }
 }
 
+// 解析images JSON字符串为数组
+function parseImages(images: string | undefined): string[] {
+  if (!images) return []
+  try {
+    const parsed = JSON.parse(images)
+    return Array.isArray(parsed) ? parsed : []
+  } catch {
+    return []
+  }
+}
+
 function handleGradeChange(grade: string) {
   gradeStore.setGrade(grade)
   page.value = 1
@@ -149,19 +161,22 @@ onMounted(() => {
       <a-table
         :data-source="questions"
         :columns="[
-          { title: 'ID', dataIndex: 'id', key: 'id', width: 80 },
-          { title: '题干', dataIndex: 'content', key: 'content', ellipsis: true },
-          { title: '年级', dataIndex: 'grade', key: 'grade', width: 80 },
-          { title: '难度', dataIndex: 'difficulty', key: 'difficulty', width: 80 },
-          { title: '操作', key: 'action', width: 120 }
+          { title: 'ID', dataIndex: 'id', key: 'id', width: 60 },
+          { title: '题干', dataIndex: 'content', key: 'content' },
+          { title: '年级', dataIndex: 'grade', key: 'grade', width: 70 },
+          { title: '难度', dataIndex: 'difficulty', key: 'difficulty', width: 70 },
+          { title: '操作', key: 'action', width: 100 }
         ]"
         :row-selection="{ selectedRowKeys, onChange: (keys: number[]) => selectedRowKeys = keys }"
         :pagination="{ total, current: page, pageSize: 20, onChange: (p: number) => { page = p; loadQuestions() } }"
         row-key="id"
+        :scroll="{ x: 800 }"
       >
         <template #bodyCell="{ column, record }">
           <template v-if="column.key === 'content'">
-            <LatexText :content="record.content" />
+            <div class="content-cell">
+              <QuestionPreview :content="record.content" :images="parseImages(record.images)" :show-images="true" :compact="true" />
+            </div>
           </template>
           <template v-if="column.key === 'difficulty'">
             <a-tag :color="record.difficulty === 1 ? 'success' : record.difficulty === 2 ? 'warning' : 'error'">
@@ -211,5 +226,14 @@ onMounted(() => {
 
 :deep(.ant-table-thead > tr > th) {
   white-space: nowrap;
+}
+
+.content-cell {
+  max-width: 400px;
+  overflow: hidden;
+}
+
+:deep(.ant-table-cell) {
+  vertical-align: top;
 }
 </style>
