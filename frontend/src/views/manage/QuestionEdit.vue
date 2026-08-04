@@ -16,6 +16,7 @@ const formState = ref({
   content: '',
   answer_analysis: '',
   grade: '初一',
+  question_type: '',
   difficulty: 1
 })
 
@@ -82,6 +83,7 @@ async function handleSave() {
     formData.append('content', formState.value.content)
     formData.append('answer_analysis', formState.value.answer_analysis)
     formData.append('grade', formState.value.grade)
+    formData.append('question_type', formState.value.question_type)
     formData.append('difficulty', String(formState.value.difficulty))
 
     // 处理图片
@@ -191,6 +193,16 @@ onMounted(async () => {
       <a-form-item label="年级">
         <a-select v-model:value="formState.grade" placeholder="选择年级" style="width: 120px">
           <a-select-option v-for="g in gradeOptions" :key="g" :value="g">{{ g }}</a-select-option>
+        </a-select>
+      </a-form-item>
+
+      <a-form-item label="题型">
+        <a-select v-model:value="formState.question_type" placeholder="选择题型" style="width: 120px" allow-clear>
+          <a-select-option value="选择题">选择题</a-select-option>
+          <a-select-option value="填空题">填空题</a-select-option>
+          <a-select-option value="解答题">解答题</a-select-option>
+          <a-select-option value="判断题">判断题</a-select-option>
+          <a-select-option value="计算题">计算题</a-select-option>
         </a-select>
       </a-form-item>
 

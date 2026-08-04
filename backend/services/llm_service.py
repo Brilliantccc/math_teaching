@@ -27,13 +27,13 @@ class LLMService:
             "Content-Type": "application/json",
         }
 
-    def chat(
+    async def chat(
         self,
         messages: List[Dict[str, str]],
         max_tokens: Optional[int] = None,
         temperature: float = 0.3,
     ) -> str:
-        """发送聊天请求"""
+        """发送聊天请求（异步）"""
         if not self.is_configured():
             raise ValueError("LLM未配置")
 
@@ -48,20 +48,20 @@ class LLMService:
         if max_tokens:
             payload["max_tokens"] = max_tokens
 
-        with httpx.Client(timeout=self.timeout) as client:
-            response = client.post(url, json=payload, headers=self._get_headers())
+        async with httpx.AsyncClient(timeout=self.timeout) as client:
+            response = await client.post(url, json=payload, headers=self._get_headers())
             response.raise_for_status()
             data = response.json()
             return data["choices"][0]["message"]["content"]
 
-    def chat_with_image(
+    async def chat_with_image(
         self,
         image_b64: str,
         prompt: str,
         max_tokens: Optional[int] = None,
         temperature: float = 0.3,
     ) -> str:
-        """发送带图片的聊天请求"""
+        """发送带图片的聊天请求（异步）"""
         if not self.is_configured():
             raise ValueError("LLM未配置")
 
@@ -87,8 +87,8 @@ class LLMService:
         if max_tokens:
             payload["max_tokens"] = max_tokens
 
-        with httpx.Client(timeout=self.timeout) as client:
-            response = client.post(url, json=payload, headers=self._get_headers())
+        async with httpx.AsyncClient(timeout=self.timeout) as client:
+            response = await client.post(url, json=payload, headers=self._get_headers())
             response.raise_for_status()
             data = response.json()
             return data["choices"][0]["message"]["content"]

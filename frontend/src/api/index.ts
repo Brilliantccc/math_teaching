@@ -67,19 +67,29 @@ export async function getLLMStatus() {
 }
 
 /** AI 图片识别 → 结构化题目 */
-export async function extractFromImage(file: File) {
+export async function extractFromImage(file: File, signal?: AbortSignal) {
   const formData = new FormData()
   formData.append('image', file)
-  const res = await api.post('/api/llm/extract', formData, {
+  const config: any = {
     headers: { 'Content-Type': 'multipart/form-data' },
-    timeout: 300000  // 5分钟，AI识别+图片裁剪需要较长时间
-  })
+    timeout: 300000,  // 5分钟，AI识别+图片裁剪需要较长时间
+  }
+  if (signal) {
+    config.signal = signal
+  }
+  const res = await api.post('/api/llm/extract', formData, config)
   return res.data
 }
 
 /** AI 生成答案和解析 */
-export async function analyzeQuestion(content: string, image_descriptions?: string[]) {
-  const res = await api.post('/api/llm/analyze', { content, image_descriptions }, { timeout: 60000 })
+export async function analyzeQuestion(content: string, image_descriptions?: string[], signal?: AbortSignal) {
+  const config: any = {
+    timeout: 120000,  // 2分钟
+  }
+  if (signal) {
+    config.signal = signal
+  }
+  const res = await api.post('/api/llm/analyze', { content, image_descriptions }, config)
   return res.data
 }
 
@@ -100,6 +110,7 @@ export async function batchCreateQuestions(questions: Array<{
   answer_analysis: string
   grade: string
   category: string
+  question_type?: string
   difficulty: number
   image_path?: string
 }>) {

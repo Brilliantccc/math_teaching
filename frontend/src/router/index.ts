@@ -123,8 +123,18 @@ router.beforeEach(async (to, from, next) => {
   const authStore = useAuthStore()
 
   // 初始化认证状态（只在首次导航时调用）
+  // 添加超时保护，防止网络请求阻塞导航
   if (authStore.token && !authStore.userFetched) {
-    await authStore.init()
+    try {
+      // 使用 Promise.race 添加5秒超时
+      await Promise.race([
+        authStore.init(),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('Auth init timeout')), 5000))
+      ])
+    } catch (error) {
+      console.warn('[Router] Auth init failed or timeout:', error)
+      // 即使初始化失败，也允许继续导航
+    }
   }
 
   // 检查是否需要认证

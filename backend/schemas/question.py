@@ -42,10 +42,12 @@ class QuestionResponse(BaseModel):
     answer_analysis: str
     grade: str
     category: str
+    question_type: str = ''  # 题型：选择题/填空题/解答题/判断题/计算题
     paper_id: Optional[int] = None
     paper_question_number: Optional[int] = None
     created_by: Optional[int] = None
     created_at: Optional[str] = None
+    display_order: Optional[int] = None  # 显示序号
 
 
 class QuestionListResponse(BaseModel):
@@ -63,6 +65,7 @@ class QuestionBatchItem(BaseModel):
     answer_analysis: str = ''
     grade: str = '初一'
     category: str = ''
+    question_type: str = ''  # 题型：选择题/填空题/解答题/判断题/计算题
     difficulty: int = 1
     image_path: str = ''
     images: str = '[]'  # JSON array: 多图片URL列表

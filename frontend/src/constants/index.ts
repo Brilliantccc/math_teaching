@@ -3,7 +3,13 @@
  */
 
 /** 年级列表 */
-export const GRADES = ['初一', '初二', '初三', '高一', '高二', '高三'] as const
+export const GRADES = ['全部', '初中全部', '初一', '初二', '初三', '高中全部', '高一', '高二', '高三'] as const
+
+/** 初中年级 */
+export const MIDDLE_SCHOOL_GRADES = ['初一', '初二', '初三']
+
+/** 高中年级 */
+export const HIGH_SCHOOL_GRADES = ['高一', '高二', '高三']
 
 /** 难度选项 */
 export const DIFFICULTIES = [

@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { ref, onMounted, watch } from 'vue'
+import { ref, onMounted } from 'vue'
 import { api } from '@/api'
 import { useGradeStore } from '@/stores'
+import { GRADES } from '@/stores/grade'
 import type { Question, QuestionListResponse } from '@/types'
 import { SearchOutlined, FileSearchOutlined } from '@ant-design/icons-vue'
 import SkeletonCard from '@/components/common/SkeletonCard.vue'
@@ -63,6 +64,12 @@ function handleSearch() {
   loadQuestions()
 }
 
+function handleGradeChange(grade: string) {
+  gradeStore.setGrade(grade)
+  page.value = 1
+  loadQuestions()
+}
+
 function handlePageChange(newPage: number) {
   page.value = newPage
   loadQuestions()
@@ -101,10 +108,6 @@ onMounted(() => {
   loadCategories()
   loadQuestions()
 })
-
-watch(() => gradeStore.currentGrade, () => {
-  loadQuestions()
-})
 </script>
 
 <template>
@@ -122,6 +125,14 @@ watch(() => gradeStore.currentGrade, () => {
         style="width: 300px"
         @search="handleSearch"
       />
+      <a-select
+        :value="gradeStore.currentGrade"
+        style="width: 120px"
+        @change="handleGradeChange"
+      >
+        <a-select-option v-for="g in gradeStore.grades" :key="g" :value="g">{{ g }}</a-select-option>
+        <a-select-option v-for="g in GRADES" :key="g" :value="g">{{ g }}</a-select-option>
+      </a-select>
       <a-select
         v-model:value="filters.category"
         placeholder="选择分类"

@@ -5,8 +5,9 @@ import json
 import uuid
 import random
 from datetime import datetime
+from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
 from fastapi.responses import FileResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, or_
@@ -18,12 +19,17 @@ from backend.models.test import Test
 from backend.models.question import Question
 from backend.schemas.test import (
     TestCreate, TestResponse, TestListResponse,
-    AutoGenerateRequest, PreviewPdfRequest
+    AutoGenerateRequest, PreviewPdfRequest, PDFExportRequest
 )
 from backend.config import settings
 
 router = APIRouter()
 
+# 内存存储PDF导出任务状态（生产环境建议用Redis）
+_pdf_tasks = {}
+
+
+# ============ 固定路径路由（必须在 /{t_id} 之前定义，避免路由冲突） ============
 
 @router.get("", response_model=TestListResponse)
 async def get_tests(
@@ -74,6 +80,389 @@ async def create_test(
     return {"id": test.id, "message": "试卷已保存"}
 
 
+# ============ 模板系统 ============
+
+@router.get("/templates")
+async def get_pdf_templates():
+    """获取PDF模板列表（无需认证）"""
+    from backend.utils.pdf_templates import get_template_list
+    return {"templates": get_template_list()}
+
+
+@router.get("/templates/{template_id}")
+async def get_pdf_template_detail(
+    template_id: str
+):
+    """获取PDF模板详情（无需认证）"""
+    from backend.utils.pdf_templates import get_template, TEMPLATES
+    from backend.core.exceptions import NotFoundException
+
+    if template_id not in TEMPLATES:
+        raise NotFoundException("模板")
+
+    template_info = TEMPLATES[template_id]
+    config = template_info["config"]
+
+    return {
+        "id": template_id,
+        "name": template_info["name"],
+        "description": template_info["description"],
+        "config": {
+            "title_font_size": config.title_font_size,
+            "question_font_size": config.question_font_size,
+            "show_score_table": config.show_score_table,
+            "show_header": config.show_header,
+            "show_footer": config.show_footer,
+            "group_by_type": config.group_by_type,
+            "answer_space_mode": config.answer_space_mode,
+        }
+    }
+
+
+@router.post("/auto", response_model=dict)
+async def auto_generate_test(
+    data: AutoGenerateRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """自动生成组卷"""
+    # 解析年级参数（支持逗号分隔的多个年级）
+    grade_list = []
+    if data.grade:
+        grade_list = [g.strip() for g in data.grade.split(',') if g.strip()]
+
+    # 如果指定了按题型配置数量
+    if data.question_type_counts:
+        selected_ids = []
+        for q_type, count in data.question_type_counts.items():
+            if count <= 0:
+                continue
+
+            query = select(Question).where(Question.question_type == q_type)
+
+            # 应用其他筛选条件
+            if data.tags:
+                tag_conditions = [Question.tags.contains(t) for t in data.tags]
+                query = query.where(or_(*tag_conditions))
+            if data.difficulties:
+                query = query.where(Question.difficulty.in_(data.difficulties))
+            if grade_list:
+                query = query.where(Question.grade.in_(grade_list))
+            if data.category:
+                query = query.where(Question.category == data.category)
+
+            result = await db.execute(query)
+            questions = result.scalars().all()
+
+            # 随机抽样
+            selected = random.sample(questions, min(count, len(questions)))
+            selected_ids.extend([q.id for q in selected])
+
+        return {"question_ids": selected_ids, "count": len(selected_ids)}
+
+    # 传统模式：按总数生成
+    query = select(Question)
+
+    if data.tags:
+        tag_conditions = [Question.tags.contains(t) for t in data.tags]
+        query = query.where(or_(*tag_conditions))
+    if data.difficulties:
+        query = query.where(Question.difficulty.in_(data.difficulties))
+    if grade_list:
+        query = query.where(Question.grade.in_(grade_list))
+    if data.category:
+        query = query.where(Question.category == data.category)
+    if data.question_type:
+        query = query.where(Question.question_type == data.question_type)
+
+    result = await db.execute(query)
+    all_questions = result.scalars().all()
+
+    # 随机抽样
+    selected = random.sample(all_questions, min(data.count, len(all_questions)))
+    q_ids = [q.id for q in selected]
+
+    return {"question_ids": q_ids, "count": len(q_ids)}
+
+
+@router.post("/preview/pdf")
+async def export_preview_pdf(
+    data: PreviewPdfRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """预览导出PDF"""
+    if not data.question_ids:
+        raise HTTPException(status_code=400, detail="没有题目")
+
+    result = await db.execute(
+        select(Question).where(Question.id.in_(data.question_ids))
+    )
+    questions = result.scalars().all()
+    questions_data = [q.to_dict() for q in questions]
+
+    from backend.utils.pdf_utils import generate_test_pdf
+    output_path = os.path.join(settings.UPLOAD_DIR, f"preview_{uuid.uuid4().hex}.pdf")
+    os.makedirs(os.path.dirname(output_path), exist_ok=True)
+
+    try:
+        generate_test_pdf(
+            questions_data, output_path,
+            title=data.title,
+            question_scores=data.question_scores
+        )
+        return FileResponse(
+            output_path,
+            media_type="application/pdf",
+            filename=f"{data.title}.pdf"
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"生成PDF失败: {str(e)}")
+
+
+# ============ 异步PDF导出功能 ============
+
+def _generate_pdf_task(
+    task_id: str,
+    t_id: int,
+    question_ids: list,
+    title: str,
+    question_scores: Optional[dict] = None
+):
+    """后台生成PDF的任务"""
+    import asyncio
+    from backend.utils.pdf_utils import generate_test_pdf
+
+    # 更新状态为处理中
+    _pdf_tasks[task_id] = {
+        "status": "processing",
+        "progress": 10,
+        "t_id": t_id,
+        "created_at": datetime.now().isoformat(),
+        "output_path": None,
+        "download_url": None,
+        "error": None
+    }
+
+    try:
+        # 同步获取数据库会话（后台任务中）
+        from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
+        from sqlalchemy.orm import sessionmaker
+        from backend.config import settings
+
+        # 这里需要同步方式获取题目数据
+        # 简化实现：直接读取已有的题目信息（从任务参数传入）
+        _pdf_tasks[task_id]["progress"] = 30
+
+        # 生成PDF
+        output_path = os.path.join(
+            settings.UPLOAD_DIR,
+            f"test_{t_id}_{task_id[:8]}.pdf"
+        )
+        os.makedirs(os.path.dirname(output_path), exist_ok=True)
+
+        _pdf_tasks[task_id]["progress"] = 50
+
+        # 注意：这里需要从question_ids重新查询题目
+        # 简化版本：假设题目数据已准备好
+        # 实际应从数据库重新查询
+        from backend.models.question import Question
+        from backend.database import async_session
+
+        async def fetch_questions():
+            async with async_session() as session:
+                result = await session.execute(
+                    select(Question).where(Question.id.in_(question_ids))
+                )
+                return [q.to_dict() for q in result.scalars().all()]
+
+        questions_data = asyncio.run(fetch_questions())
+
+        _pdf_tasks[task_id]["progress"] = 70
+
+        generate_test_pdf(
+            questions_data, output_path,
+            title=title or "数学试卷",
+            question_scores=question_scores
+        )
+
+        _pdf_tasks[task_id].update({
+            "status": "completed",
+            "progress": 100,
+            "output_path": output_path,
+            "download_url": f"/api/tests/pdf/download/{task_id}"
+        })
+
+    except Exception as e:
+        _pdf_tasks[task_id].update({
+            "status": "failed",
+            "error": str(e),
+            "progress": 0
+        })
+        print(f"[PDF] Task {task_id} failed: {e}")
+
+
+@router.post("/async")
+async def create_async_pdf_task(
+    data: PreviewPdfRequest,
+    background_tasks: BackgroundTasks,
+    current_user: User = Depends(get_current_user)
+):
+    """创建异步PDF导出任务"""
+    if not data.question_ids:
+        raise HTTPException(status_code=400, detail="没有题目")
+
+    task_id = uuid.uuid4().hex
+
+    # 启动后台任务
+    background_tasks.add_task(
+        _generate_pdf_task,
+        task_id=task_id,
+        t_id=0,  # 预览模式无t_id
+        question_ids=data.question_ids,
+        title=data.title or "数学试卷",
+        question_scores=data.question_scores
+    )
+
+    return {
+        "task_id": task_id,
+        "status": "processing",
+        "message": "PDF生成任务已创建"
+    }
+
+
+@router.get("/task/{task_id}")
+async def get_pdf_task_status(
+    task_id: str,
+    current_user: User = Depends(get_current_user)
+):
+    """查询PDF任务状态"""
+    if task_id not in _pdf_tasks:
+        raise HTTPException(status_code=404, detail="任务不存在")
+
+    task = _pdf_tasks[task_id]
+    return {
+        "task_id": task_id,
+        "status": task["status"],
+        "progress": task["progress"],
+        "download_url": task.get("download_url"),
+        "error": task.get("error")
+    }
+
+
+@router.get("/download/{task_id}")
+async def download_task_pdf(
+    task_id: str,
+    current_user: User = Depends(get_current_user)
+):
+    """下载异步任务生成的PDF"""
+    if task_id not in _pdf_tasks:
+        raise HTTPException(status_code=404, detail="任务不存在")
+
+    task = _pdf_tasks[task_id]
+    if task["status"] != "completed":
+        raise HTTPException(status_code=400, detail="任务尚未完成")
+
+    if not task["output_path"] or not os.path.exists(task["output_path"]):
+        raise HTTPException(status_code=404, detail="PDF文件不存在")
+
+    return FileResponse(
+        task["output_path"],
+        media_type="application/pdf",
+        filename=f"{task.get('title', '试卷')}.pdf"
+    )
+
+
+@router.delete("/task/{task_id}")
+async def delete_pdf_task(
+    task_id: str,
+    current_user: User = Depends(get_current_user)
+):
+    """删除PDF任务及文件"""
+    if task_id not in _pdf_tasks:
+        raise HTTPException(status_code=404, detail="任务不存在")
+
+    task = _pdf_tasks.pop(task_id)
+
+    # 删除生成的PDF文件
+    if task.get("output_path") and os.path.exists(task["output_path"]):
+        os.remove(task["output_path"])
+
+    return {"message": "任务已删除"}
+
+
+@router.get("/cache/stats")
+async def get_latex_cache_stats(
+    current_user: User = Depends(get_current_user)
+):
+    """获取LaTeX缓存统计"""
+    from backend.utils.pdf_utils import get_latex_cache_stats
+    return get_latex_cache_stats()
+
+
+@router.post("/cache/clear")
+async def clear_latex_cache_endpoint(
+    current_user: User = Depends(get_current_user)
+):
+    """清理LaTeX缓存"""
+    from backend.utils.pdf_utils import clear_latex_cache
+    clear_latex_cache()
+    return {"message": "缓存已清理"}
+
+
+@router.post("/preview")
+async def preview_pdf_with_template(
+    data: PDFExportRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """使用模板预览PDF"""
+    if not data.question_ids:
+        raise HTTPException(status_code=400, detail="没有题目")
+
+    # 获取题目
+    result = await db.execute(
+        select(Question).where(Question.id.in_(data.question_ids))
+    )
+    questions = result.scalars().all()
+    if not questions:
+        raise HTTPException(status_code=404, detail="题目不存在")
+
+    questions_data = [q.to_dict() for q in questions]
+
+    # 获取模板配置
+    from backend.utils.pdf_templates import get_template, merge_config
+    base_config = get_template(data.template)
+
+    # 合并用户自定义配置
+    final_config = merge_config(base_config, data.style_overrides)
+
+    # 生成PDF
+    from backend.utils.pdf_utils import generate_test_pdf
+    output_path = os.path.join(
+        settings.UPLOAD_DIR,
+        f"preview_{uuid.uuid4().hex}.pdf"
+    )
+    os.makedirs(os.path.dirname(output_path), exist_ok=True)
+
+    try:
+        generate_test_pdf(
+            questions_data, output_path,
+            title=data.title,
+            question_scores=data.question_scores,
+            style_config=final_config
+        )
+        return FileResponse(
+            output_path,
+            media_type="application/pdf",
+            filename=f"{data.title}_预览.pdf"
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"生成PDF失败: {str(e)}")
+
+
+# ============ 参数化路由（放在最后） ============
+
 @router.delete("/{t_id}")
 async def delete_test(
     t_id: int,
@@ -114,35 +503,6 @@ async def get_test(
         data["questions"] = []
 
     return TestResponse(**data)
-
-
-@router.post("/auto", response_model=dict)
-async def auto_generate_test(
-    data: AutoGenerateRequest,
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user)
-):
-    """自动生成组卷"""
-    query = select(Question)
-
-    if data.tags:
-        tag_conditions = [Question.tags.contains(t) for t in data.tags]
-        query = query.where(or_(*tag_conditions))
-    if data.difficulties:
-        query = query.where(Question.difficulty.in_(data.difficulties))
-    if data.grade:
-        query = query.where(Question.grade == data.grade)
-    if data.category:
-        query = query.where(Question.category == data.category)
-
-    result = await db.execute(query)
-    all_questions = result.scalars().all()
-
-    # 随机抽样
-    selected = random.sample(all_questions, min(data.count, len(all_questions)))
-    q_ids = [q.id for q in selected]
-
-    return {"question_ids": q_ids, "count": len(q_ids)}
 
 
 @router.get("/{t_id}/pdf")
@@ -191,41 +551,6 @@ async def export_test_pdf(
             output_path,
             media_type="application/pdf",
             filename=f"{test.name or '试卷'}.pdf"
-        )
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"生成PDF失败: {str(e)}")
-
-
-@router.post("/preview/pdf")
-async def export_preview_pdf(
-    data: PreviewPdfRequest,
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user)
-):
-    """预览导出PDF"""
-    if not data.question_ids:
-        raise HTTPException(status_code=400, detail="没有题目")
-
-    result = await db.execute(
-        select(Question).where(Question.id.in_(data.question_ids))
-    )
-    questions = result.scalars().all()
-    questions_data = [q.to_dict() for q in questions]
-
-    from backend.utils.pdf_utils import generate_test_pdf
-    output_path = os.path.join(settings.UPLOAD_DIR, f"preview_{uuid.uuid4().hex}.pdf")
-    os.makedirs(os.path.dirname(output_path), exist_ok=True)
-
-    try:
-        generate_test_pdf(
-            questions_data, output_path,
-            title=data.title,
-            question_scores=data.question_scores
-        )
-        return FileResponse(
-            output_path,
-            media_type="application/pdf",
-            filename=f"{data.title}.pdf"
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"生成PDF失败: {str(e)}")

@@ -41,6 +41,7 @@ export interface Question {
   answer_analysis: string
   grade: string
   category: string
+  question_type: string  // 题型：选择题/填空题/解答题/判断题/计算题
   paper_id: number | null
   paper_question_number: number | null
   created_by: number | null
@@ -98,6 +99,8 @@ export interface AutoGenerateRequest {
   difficulties?: number[]
   grade?: string
   category?: string
+  question_type?: string  // 单一题型筛选
+  question_type_counts?: Record<string, number>  // 按题型配置数量
 }
 
 /** 错题类型 */
@@ -196,6 +199,7 @@ export interface LLMExtractResult {
   tags: string[]
   difficulty: number
   category: string
+  question_type: string  // 题型：选择题/填空题/解答题/判断题/计算题
 }
 
 /** LLM 分析结果 */

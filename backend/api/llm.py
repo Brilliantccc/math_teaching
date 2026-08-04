@@ -1,5 +1,6 @@
 """LLM辅助功能路由"""
 
+import asyncio
 import base64
 import io
 import os
@@ -227,7 +228,7 @@ async def extract_from_image(
             max_tokens = 8192 * (attempt + 1)  # 8192, 16384, 24576
             print(f"[LLM] Attempt {attempt + 1}/{max_retries}, max_tokens={max_tokens}")
 
-            result_text = llm_service.chat_with_image(
+            result_text = await llm_service.chat_with_image(
                 image_b64,
                 EXTRACT_PROMPT,
                 max_tokens=max_tokens,
@@ -296,8 +297,7 @@ async def extract_from_image(
             last_error = e
             print(f"[LLM] Parse error (attempt {attempt + 1}): {e}")
             if attempt < max_retries - 1:
-                import time
-                time.sleep(1)  # 等待1秒后重试
+                await asyncio.sleep(1)  # 等待1秒后重试（异步）
         except Exception as e:
             print(f"[LLM] Error: {type(e).__name__}: {e}")
             raise HTTPException(status_code=500, detail=f"识别失败: {str(e)}")
@@ -343,7 +343,7 @@ async def batch_extract_from_images(
         try:
             resized_data = resize_image(image_data)
             image_b64 = base64.b64encode(resized_data).decode()
-            result_text = llm_service.chat_with_image(image_b64, EXTRACT_PROMPT)
+            result_text = await llm_service.chat_with_image(image_b64, EXTRACT_PROMPT)
             print(f"[LLM] Batch {idx} response: {result_text[:500]}")
 
             # 尝试解析 JSON，失败时重试
@@ -352,7 +352,7 @@ async def batch_extract_from_images(
             except ValueError:
                 print(f"[LLM] Batch {idx} JSON parse failed, retrying...")
                 # 重试一次
-                result_text = llm_service.chat_with_image(image_b64, EXTRACT_PROMPT)
+                result_text = await llm_service.chat_with_image(image_b64, EXTRACT_PROMPT)
                 result = llm_service.parse_json(result_text)
 
             # 确保返回数组格式
@@ -426,7 +426,7 @@ async def generate_analysis(
     try:
         prompt = ANALYSIS_PROMPT.format(content=data.content, image_descriptions=image_descriptions_text)
         print(f"[LLM] Analyze prompt: {prompt[:200]}...")
-        result_text = llm_service.chat([{"role": "user", "content": prompt}])
+        result_text = await llm_service.chat([{"role": "user", "content": prompt}])
         print(f"[LLM] Analyze raw response: {result_text[:500]}")
         result = llm_service.parse_json(result_text)
         print(f"[LLM] Analyze parsed result: {result}")

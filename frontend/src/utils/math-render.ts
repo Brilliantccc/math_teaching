@@ -5,9 +5,25 @@
 
 import katex from 'katex'
 
-// 添加图片指引文字的样式
-const imageRefStyle = `
+// 内联图片样式
+const inlineImageStyle = `
   <style>
+    .inline-image {
+      display: inline-block;
+      max-height: 200px;
+      max-width: 100%;
+      vertical-align: middle;
+      margin: 0 6px;
+      border-radius: 4px;
+      border: 1px solid #e8e8e8;
+      background: #fafafa;
+      object-fit: contain;
+    }
+    .inline-image:hover {
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+      transform: scale(1.02);
+      transition: all 0.2s ease;
+    }
     .image-reference {
       display: inline-flex;
       align-items: center;
@@ -74,10 +90,20 @@ export function renderMathText(text: string, images?: string[]): string {
   result = result.replace(/<(\/?)(?:p|div|span|b|i|u|strong|em|font|img|a|ul|ol|li|h[1-6]|table|tr|td|th|thead|tbody)[^>]*>/gi, '')
 
   // 第零步：处理图片引用 {{img:N}}
-  // 只显示指引文字，实际图片由 QuestionPreview 组件在右侧显示
+  // 将图片引用替换为实际的 <img> 标签
   result = result.replace(/\{\{img:(\d+)\}\}/g, (_, index) => {
     const imgIndex = parseInt(index)
-    // 返回指引文字，不显示实际图片
+    if (images && images[imgIndex]) {
+      // 获取图片URL，处理相对路径
+      let imgSrc = images[imgIndex]
+      if (!imgSrc.startsWith('http') && !imgSrc.startsWith('data:')) {
+        // 相对路径，直接使用（浏览器会相对于当前页面解析）
+        imgSrc = imgSrc
+      }
+      // 返回内联图片，支持hover效果
+      return `<img src="${imgSrc}" class="inline-image" alt="配图${imgIndex + 1}" loading="lazy" onerror="this.style.display='none'"/>`
+    }
+    // 如果没有图片，显示指引文字
     return `<span class="image-reference">[图${imgIndex + 1}]</span>`
   })
 

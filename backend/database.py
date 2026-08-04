@@ -54,9 +54,61 @@ async def init_db():
         except Exception:
             # 列已存在，忽略错误
             pass
+        # 添加question_type字段到questions表
+        try:
+            await conn.execute(
+                __import__('sqlalchemy').text(
+                    "ALTER TABLE questions ADD COLUMN question_type TEXT DEFAULT ''"
+                )
+            )
+        except Exception:
+            # 列已存在，忽略错误
+            pass
+        # 添加display_order字段到questions表
+        try:
+            await conn.execute(
+                __import__('sqlalchemy').text(
+                    "ALTER TABLE questions ADD COLUMN display_order INTEGER"
+                )
+            )
+        except Exception:
+            # 列已存在，忽略错误
+            pass
+
+    # 为现有题目设置display_order
+    await _migrate_display_order()
 
     # 创建默认管理员
     await _ensure_admin_user()
+
+
+async def _migrate_display_order():
+    """为现有题目设置display_order，按年级分组，按创建时间排序"""
+    from backend.models.question import Question
+    from sqlalchemy import select, func, update
+
+    async with async_session() as session:
+        # 获取所有年级
+        grades_result = await session.execute(
+            select(Question.grade).distinct()
+        )
+        grades = [row[0] for row in grades_result.all()]
+
+        for grade in grades:
+            # 获取该年级下所有题目，按创建时间排序
+            questions_result = await session.execute(
+                select(Question)
+                .where(Question.grade == grade)
+                .order_by(Question.created_at)
+            )
+            questions = questions_result.scalars().all()
+
+            # 设置display_order
+            for idx, q in enumerate(questions, 1):
+                if q.display_order is None:
+                    q.display_order = idx
+
+        await session.commit()
 
 
 async def _ensure_admin_user():

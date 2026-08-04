@@ -161,8 +161,9 @@ onMounted(() => {
       <a-table
         :data-source="questions"
         :columns="[
-          { title: 'ID', dataIndex: 'id', key: 'id', width: 60 },
+          { title: '序号', dataIndex: 'display_order', key: 'display_order', width: 60 },
           { title: '题干', dataIndex: 'content', key: 'content' },
+          { title: '题型', dataIndex: 'question_type', key: 'question_type', width: 80 },
           { title: '年级', dataIndex: 'grade', key: 'grade', width: 70 },
           { title: '难度', dataIndex: 'difficulty', key: 'difficulty', width: 70 },
           { title: '操作', key: 'action', width: 100 }
@@ -182,6 +183,12 @@ onMounted(() => {
             <a-tag :color="record.difficulty === 1 ? 'success' : record.difficulty === 2 ? 'warning' : 'error'">
               {{ record.difficulty === 1 ? '简单' : record.difficulty === 2 ? '中等' : '困难' }}
             </a-tag>
+          </template>
+          <template v-if="column.key === 'question_type'">
+            <a-tag v-if="record.question_type" color="blue">
+              {{ record.question_type }}
+            </a-tag>
+            <span v-else style="color: #999">-</span>
           </template>
           <template v-if="column.key === 'action'">
             <a-space>

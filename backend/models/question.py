@@ -28,10 +28,12 @@ class Question(Base):
     answer_analysis: Mapped[str] = mapped_column(Text, default='')  # 答案与解析合并在
     grade: Mapped[str] = mapped_column(Text, default='初一')
     category: Mapped[str] = mapped_column(Text, default='')
+    question_type: Mapped[str] = mapped_column(Text, default='')  # 题型：选择题/填空题/解答题/判断题/计算题
     paper_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey('papers.id'), nullable=True)
     paper_question_number: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     created_by: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey('users.id'), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+    display_order: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)  # 显示序号，按年级分组
 
     # 关系
     author: Mapped[Optional["User"]] = relationship(back_populates="questions")
@@ -49,8 +51,10 @@ class Question(Base):
             "answer_analysis": self.answer_analysis,
             "grade": self.grade,
             "category": self.category,
+            "question_type": self.question_type,
             "paper_id": self.paper_id,
             "paper_question_number": self.paper_question_number,
             "created_by": self.created_by,
             "created_at": self.created_at.isoformat() if self.created_at else None,
+            "display_order": self.display_order,
         }

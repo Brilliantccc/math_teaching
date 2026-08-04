@@ -29,7 +29,7 @@ math-question-bank/
 │   ├── schemas/           # Pydantic 数据模型
 │   ├── core/              # 核心模块（认证、依赖注入）
 │   ├── services/          # 业务服务（LLM）
-│   ├── utils/             # 工具函数（PDF）
+│   ├── utils/             # 工具函数（PDF、模板）
 │   ├── config.py          # 配置管理
 │   ├── database.py        # 数据库连接
 │   └── main.py            # 应用入口
@@ -155,6 +155,12 @@ npm run dev
 - 智能解析：自动生成答案和解析
 - LaTeX 公式渲染：使用 KaTeX 支持数学公式显示
 - 题目去重：自动检测并防止重复题目
+- 异步处理：后台任务不阻塞界面操作
+
+### 试卷导出
+- PDF 导出：支持多种试卷模板
+- 模板系统：可自定义试卷样式
+- 答案分离：支持题目和答案分开导出
 
 ### LaTeX 支持
 

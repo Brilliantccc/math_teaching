@@ -1,6 +1,6 @@
 """组卷相关模型"""
 
-from typing import Optional, List, Dict
+from typing import Optional, List, Dict, Any
 from pydantic import BaseModel, Field
 
 
@@ -36,6 +36,8 @@ class AutoGenerateRequest(BaseModel):
     difficulties: List[int] = [1, 2, 3]
     grade: str = ''
     category: str = ''
+    question_type: str = ''  # 单一题型筛选
+    question_type_counts: Dict[str, int] = {}  # 按题型配置数量 {"选择题": 5, "填空题": 3, "解答题": 2}
 
 
 class PreviewPdfRequest(BaseModel):
@@ -43,3 +45,27 @@ class PreviewPdfRequest(BaseModel):
     question_ids: List[int]
     title: str = '数学试卷'
     question_scores: Optional[Dict[int, int]] = None
+
+
+class PDFExportRequest(BaseModel):
+    """PDF导出请求（支持模板和样式配置）"""
+    question_ids: List[int]
+    title: str = '数学试卷'
+    template: str = 'standard'  # 模板类型：standard/concise/detailed/professional
+    question_scores: Optional[Dict[int, int]] = None
+    style_overrides: Optional[Dict[str, Any]] = None  # 样式覆盖配置
+
+
+class PDFStyleOverride(BaseModel):
+    """PDF样式覆盖配置"""
+    title_font_size: Optional[int] = None
+    title_color: Optional[str] = None
+    question_font_size: Optional[int] = None
+    show_answer: Optional[bool] = None
+    show_analysis: Optional[bool] = None
+    show_header: Optional[bool] = None
+    header_text: Optional[str] = None
+    show_footer: Optional[bool] = None
+    footer_text: Optional[str] = None
+    group_by_type: Optional[bool] = None
+    answer_space_mode: Optional[str] = None

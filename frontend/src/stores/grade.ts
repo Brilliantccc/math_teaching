@@ -2,24 +2,25 @@
 
 import { defineStore } from 'pinia'
 import { ref, watch } from 'vue'
-import { GRADES as BASE_GRADES } from '@/constants'
+import { GRADES, MIDDLE_SCHOOL_GRADES, HIGH_SCHOOL_GRADES } from '@/constants'
 
-// 在基础年级列表前添加"全部"选项
-export const GRADES = ['全部', ...BASE_GRADES]
+// 重新导出 GRADES 供其他组件使用
+export { GRADES }
 
 export const useGradeStore = defineStore('grade', () => {
   const currentGrade = ref(localStorage.getItem('grade') || '初一')
 
   function setGrade(grade: string) {
-    if (GRADES.includes(grade)) {
-      currentGrade.value = grade
-      localStorage.setItem('grade', grade)
-    }
+    currentGrade.value = grade
+    localStorage.setItem('grade', grade)
   }
 
-  // 获取用于API的年级参数（全部返回空字符串）
+  // 获取用于API的年级参数（全部返回空字符串，初中全部/高中全部返回对应年级数组）
   function getGradeParam() {
-    return currentGrade.value === '全部' ? '' : currentGrade.value
+    if (currentGrade.value === '全部') return ''
+    if (currentGrade.value === '初中全部') return MIDDLE_SCHOOL_GRADES.join(',')
+    if (currentGrade.value === '高中全部') return HIGH_SCHOOL_GRADES.join(',')
+    return currentGrade.value
   }
 
   // 监听变化

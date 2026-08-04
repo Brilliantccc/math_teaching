@@ -41,6 +41,29 @@ async def get_categories(
     return {"categories": categories}
 
 
+@router.get("/question-types")
+async def get_question_types(
+    grade: str = Query(default=''),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """获取所有题型及其题目数量（支持按年级筛选，多个年级用逗号分隔）"""
+    query = select(
+        Question.question_type,
+        func.count(Question.id).label('count')
+    ).where(Question.question_type != '')
+
+    if grade and grade != '全部':
+        grade_list = [g.strip() for g in grade.split(',') if g.strip()]
+        if grade_list:
+            query = query.where(Question.grade.in_(grade_list))
+
+    query = query.group_by(Question.question_type)
+    result = await db.execute(query)
+    types = [{"type": row[0], "count": row[1]} for row in result.all()]
+    return {"question_types": types}
+
+
 @router.get("", response_model=QuestionListResponse)
 async def get_questions(
     tag: str = Query(default=''),
@@ -63,7 +86,12 @@ async def get_questions(
     if difficulty:
         query = query.where(Question.difficulty == difficulty)
     if grade:
-        query = query.where(Question.grade == grade)
+        # 支持逗号分隔的多选年级（如 "初一,初二,初三"）
+        grade_list = [g.strip() for g in grade.split(',') if g.strip()]
+        if len(grade_list) == 1:
+            query = query.where(Question.grade == grade_list[0])
+        elif len(grade_list) > 1:
+            query = query.where(Question.grade.in_(grade_list))
     if category:
         query = query.where(Question.category == category)
 
@@ -72,8 +100,8 @@ async def get_questions(
     count_query = select(func.count()).select_from(query.subquery())
     total = (await db.execute(count_query)).scalar() or 0
 
-    # 分页查询
-    query = query.order_by(Question.created_at.desc())
+    # 分页查询 - 按序号从小到大排列
+    query = query.order_by(Question.display_order.asc())
     query = query.offset((page - 1) * per_page).limit(per_page)
     result = await db.execute(query)
     questions = result.scalars().all()
@@ -96,6 +124,7 @@ async def create_question(
     answer_analysis: str = Form(default=''),
     grade: str = Form(default='初一'),
     category: str = Form(default=''),
+    question_type: str = Form(default=''),
     paper_id: Optional[int] = Form(default=None),
     paper_question_number: Optional[int] = Form(default=None),
     image: Optional[UploadFile] = File(default=None),
@@ -164,14 +193,23 @@ async def create_question(
                     if not image_path:
                         image_path = img_path
 
+    # 获取当前年级下最大的display_order
+    max_order_result = await db.execute(
+        select(func.max(Question.display_order))
+        .where(Question.grade == grade)
+    )
+    max_order = max_order_result.scalar() or 0
+    next_order = max_order + 1
+
     question = Question(
         content=content, tags=tags, difficulty=difficulty,
         source=source, image_path=image_path, images=json.dumps(images_list, ensure_ascii=False),
         answer_analysis=answer_analysis,
-        grade=grade, category=category,
+        grade=grade, category=category, question_type=question_type,
         paper_id=paper_id,
         paper_question_number=paper_question_number,
-        created_by=current_user.id
+        created_by=current_user.id,
+        display_order=next_order
     )
     db.add(question)
     await db.commit()
@@ -234,6 +272,7 @@ async def batch_create_questions(
             answer_analysis=item.answer_analysis,
             grade=item.grade,
             category=item.category,
+            question_type=item.question_type,
             difficulty=item.difficulty,
             image_path=item.image_path,
             created_by=current_user.id
@@ -350,6 +389,7 @@ async def update_question(
     answer_analysis: str = Form(default=None),
     grade: str = Form(default=None),
     category: str = Form(default=None),
+    question_type: str = Form(default=None),
     existing_images: str = Form(default='[]'),
     images: Optional[List[UploadFile]] = File(default=None),
     db: AsyncSession = Depends(get_db),
@@ -368,6 +408,7 @@ async def update_question(
     if answer_analysis is not None: question.answer_analysis = answer_analysis
     if grade is not None: question.grade = grade
     if category is not None: question.category = category
+    if question_type is not None: question.question_type = question_type
 
     # 处理图片
     import json
@@ -409,8 +450,13 @@ async def delete_question(
     if not question:
         raise NotFoundException("题目")
 
+    grade = question.grade
     await db.delete(question)
     await db.commit()
+
+    # 重新排序该年级下的所有题目
+    await _reorder_questions_by_grade(db, grade)
+
     return {"message": "题目已删除"}
 
 
@@ -429,10 +475,18 @@ async def batch_delete_questions(
     )
     questions = result.scalars().all()
 
+    # 收集受影响的年级
+    affected_grades = set()
     for q in questions:
+        affected_grades.add(q.grade)
         await db.delete(q)
 
     await db.commit()
+
+    # 重新排序受影响年级下的所有题目
+    for grade in affected_grades:
+        await _reorder_questions_by_grade(db, grade)
+
     return {"message": f"已删除 {len(data.ids)} 道题目"}
 
 
@@ -465,3 +519,20 @@ async def batch_update_questions(
 
     await db.commit()
     return {"message": f"已更新 {len(data.ids)} 道题目"}
+
+
+async def _reorder_questions_by_grade(db: AsyncSession, grade: str):
+    """重新排序指定年级下的所有题目，按创建时间排序"""
+    # 获取该年级下所有题目，按创建时间排序
+    result = await db.execute(
+        select(Question)
+        .where(Question.grade == grade)
+        .order_by(Question.created_at)
+    )
+    questions = result.scalars().all()
+
+    # 重新设置display_order
+    for idx, q in enumerate(questions, 1):
+        q.display_order = idx
+
+    await db.commit()

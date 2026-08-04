@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, reactive, onMounted, computed } from 'vue'
+import { ref, reactive, onMounted, computed, onBeforeUnmount } from 'vue'
 import { useRouter } from 'vue-router'
 import { api, getLLMStatus, extractFromImage, analyzeQuestion } from '@/api'
 import { useGradeStore } from '@/stores'
@@ -11,6 +11,43 @@ import LatexText from '@/components/display/LatexText.vue'
 const router = useRouter()
 const gradeStore = useGradeStore()
 
+// 组件是否仍然存活
+const isMounted = ref(true)
+// 用于取消进行中的AI请求
+let abortController: AbortController | null = null
+// 追踪所有创建的 Blob URL，用于组件销毁时释放
+const blobUrls: string[] = []
+
+/** 创建 Blob URL 并追踪，确保组件销毁时释放 */
+function createTrackedBlobUrl(blob: Blob): string {
+  const url = URL.createObjectURL(blob)
+  blobUrls.push(url)
+  return url
+}
+
+/** 释放所有追踪的 Blob URL */
+function revokeAllBlobUrls() {
+  blobUrls.forEach(url => {
+    try {
+      URL.revokeObjectURL(url)
+    } catch {
+      // 忽略已释放的 URL
+    }
+  })
+  blobUrls.length = 0
+}
+
+onBeforeUnmount(() => {
+  isMounted.value = false
+  // 取消所有进行中的AI请求
+  if (abortController) {
+    abortController.abort()
+    abortController = null
+  }
+  // 释放所有 Blob URL，防止内存泄漏
+  revokeAllBlobUrls()
+})
+
 // 模式切换
 const mode = ref<'single' | 'batch'>('single')
 
@@ -20,6 +57,7 @@ const formState = reactive({
   answer_analysis: '',
   grade: gradeStore.currentGrade === '全部' ? '初一' : gradeStore.currentGrade,
   category: '',
+  question_type: '',
   difficulty: 1,
   image_descriptions: [] as string[],
   croppedImages: [] as string[] // AI裁剪后的图片路径
@@ -33,6 +71,7 @@ const batchQuestions = ref<Array<{
   answer_analysis: string
   grade: string
   category: string
+  question_type: string
   difficulty: number
   imageFiles?: File[]
   imagePreviews?: string[]
@@ -75,7 +114,7 @@ function handlePaste(e: ClipboardEvent) {
           name: file.name,
           status: 'done',
           originFileObj: file,
-          url: URL.createObjectURL(file)
+          url: createTrackedBlobUrl(file)
         })
         message.success('已粘贴图片')
       }
@@ -96,7 +135,7 @@ function handleDrop(e: DragEvent) {
         name: file.name,
         status: 'done',
         originFileObj: file,
-        url: URL.createObjectURL(file)
+        url: createTrackedBlobUrl(file)
       })
     }
   })
@@ -116,7 +155,7 @@ function handleBatchPaste(e: ClipboardEvent) {
           name: file.name,
           status: 'done',
           originFileObj: file,
-          url: URL.createObjectURL(file)
+          url: createTrackedBlobUrl(file)
         })
         message.success('已粘贴图片')
       }
@@ -137,7 +176,7 @@ function handleBatchDrop(e: DragEvent) {
         name: file.name,
         status: 'done',
         originFileObj: file,
-        url: URL.createObjectURL(file)
+        url: createTrackedBlobUrl(file)
       })
     }
   })
@@ -164,7 +203,14 @@ async function handleAIExtract() {
 
     console.log('[Upload] File:', file.name, file.size, file.type)
     singleProgress.value = 'AI 正在识别题目...'
-    const result = await extractFromImage(file)
+
+    // 创建新的 AbortController 并保存
+    abortController = new AbortController()
+    const result = await extractFromImage(file, abortController.signal)
+
+    // 组件已销毁，不再更新状态
+    if (!isMounted.value) return
+
     if (result.success && result.data) {
       singleProgress.value = '识别成功，正在填充表单...'
       const items = Array.isArray(result.data) ? result.data : [result.data]
@@ -175,6 +221,7 @@ async function handleAIExtract() {
         if (data.answer_analysis) formState.answer_analysis = data.answer_analysis
         if (data.difficulty) formState.difficulty = data.difficulty
         if (data.category) formState.category = data.category
+        if (data.question_type) formState.question_type = data.question_type
         // 存储图片描述和裁剪后的图片路径
         if (data.image_descriptions) {
           formState.image_descriptions = data.image_descriptions
@@ -193,6 +240,7 @@ async function handleAIExtract() {
             answer_analysis: data.answer_analysis || '',
             grade: formState.grade,
             category: data.category || '',
+            question_type: data.question_type || '',
             difficulty: data.difficulty || 1,
             // 如果有裁剪后的图片，使用裁剪后的；否则使用原始图片
             imageFiles: [],
@@ -212,12 +260,21 @@ async function handleAIExtract() {
       message.error('AI 识别失败，请重试')
     }
   } catch (error: any) {
+    // 忽略 AbortError（组件已销毁时取消请求）
+    if (error?.name === 'AbortError') return
+
+    // 组件已销毁，不再显示错误
+    if (!isMounted.value) return
+
     console.error('[Upload] AI extract error:', error)
     singleProgress.value = ''
     const detail = error?.response?.data?.detail || error.message || 'AI 识别失败'
     message.error(detail)
   } finally {
-    aiExtractLoading.value = false
+    abortController = null
+    if (isMounted.value) {
+      aiExtractLoading.value = false
+    }
   }
 }
 
@@ -230,7 +287,12 @@ async function handleAIAnalyze() {
   aiAnalyzeLoading.value = true
   analyzeProgress.value = 'AI 正在分析题目...'
   try {
-    const result = await analyzeQuestion(formState.stem, formState.image_descriptions)
+    abortController = new AbortController()
+    const result = await analyzeQuestion(formState.stem, formState.image_descriptions, abortController.signal)
+
+    // 组件已销毁，不再更新状态
+    if (!isMounted.value) return
+
     if (result.success && result.data) {
       analyzeProgress.value = '生成完成，正在填充...'
       if (result.data.answer_analysis) formState.answer_analysis = result.data.answer_analysis
@@ -241,10 +303,16 @@ async function handleAIAnalyze() {
       message.error('AI 生成失败，请重试')
     }
   } catch (error: any) {
+    if (error?.name === 'AbortError') return
+    if (!isMounted.value) return
+
     analyzeProgress.value = ''
     message.error(error?.response?.data?.detail || 'AI 生成失败')
   } finally {
-    aiAnalyzeLoading.value = false
+    abortController = null
+    if (isMounted.value) {
+      aiAnalyzeLoading.value = false
+    }
   }
 }
 
@@ -261,6 +329,7 @@ async function handleSubmit() {
     formData.append('answer_analysis', formState.answer_analysis)
     formData.append('grade', formState.grade)
     formData.append('category', formState.category)
+    formData.append('question_type', formState.question_type)
     formData.append('difficulty', String(formState.difficulty))
 
     // 如果有AI裁剪后的图片，使用裁剪后的路径
@@ -280,6 +349,9 @@ async function handleSubmit() {
       headers: { 'Content-Type': 'multipart/form-data' }
     })
 
+    // 组件已销毁，不再更新状态
+    if (!isMounted.value) return
+
     if (response.data.duplicate) {
       message.warning('已存在相同题目，未重复添加')
     } else {
@@ -287,9 +359,12 @@ async function handleSubmit() {
     }
     router.push('/manage')
   } catch (error) {
+    if (!isMounted.value) return
     console.error('Failed to upload:', error)
   } finally {
-    loading.value = false
+    if (isMounted.value) {
+      loading.value = false
+    }
   }
 }
 
@@ -309,9 +384,17 @@ async function handleBatchAIExtract() {
   let failCount = 0
 
   for (let idx = 0; idx < files.length; idx++) {
+    // 组件已销毁，停止处理
+    if (!isMounted.value) return
+
     batchProgress.value = `正在识别第 ${idx + 1}/${files.length} 张图片...`
     try {
-      const result = await extractFromImage(files[idx])
+      abortController = new AbortController()
+      const result = await extractFromImage(files[idx], abortController.signal)
+
+      // 组件已销毁，不再更新状态
+      if (!isMounted.value) return
+
       if (result.success && result.data) {
         const items = Array.isArray(result.data) ? result.data : [result.data]
         items.forEach((data: any) => {
@@ -322,11 +405,12 @@ async function handleBatchAIExtract() {
             answer_analysis: data?.answer_analysis || '',
             grade: formState.grade,
             category: data?.category || '',
+            question_type: data?.question_type || '',
             difficulty: data?.difficulty || 1,
             imageFiles: [],
             imagePreviews: hasCroppedImages
               ? data.cropped_images.map((img: string) => img.startsWith('http') ? img : `${api.defaults.baseURL}/${img}`)
-              : [URL.createObjectURL(files[idx])],
+              : [createTrackedBlobUrl(files[idx])],
             image_descriptions: data?.image_descriptions || [],
             croppedImages: data.cropped_images || []
           })
@@ -337,9 +421,14 @@ async function handleBatchAIExtract() {
         failCount++
         batchProgress.value = `第 ${idx + 1}/${files.length} 张识别失败`
       }
-    } catch {
+    } catch (error: any) {
+      if (error?.name === 'AbortError') return
+      if (!isMounted.value) return
+
       failCount++
       batchProgress.value = `第 ${idx + 1}/${files.length} 张识别出错`
+    } finally {
+      abortController = null
     }
   }
 
@@ -355,7 +444,9 @@ async function handleBatchAIExtract() {
     message.warning(`${failCount} 张图片识别失败`)
   }
 
-  aiExtractLoading.value = false
+  if (isMounted.value) {
+    aiExtractLoading.value = false
+  }
 }
 
 function addBatchQuestion() {
@@ -364,6 +455,7 @@ function addBatchQuestion() {
     answer_analysis: '',
     grade: formState.grade,
     category: '',
+    question_type: '',
     difficulty: 1,
     imageFiles: [],
     imagePreviews: [],
@@ -393,7 +485,12 @@ async function handleBatchAIAnalyze(index: number) {
   aiAnalyzeLoading.value = true
   batchProgress.value = `正在为第 ${index + 1} 题生成答案解析...`
   try {
-    const result = await analyzeQuestion(q.content, q.image_descriptions)
+    abortController = new AbortController()
+    const result = await analyzeQuestion(q.content, q.image_descriptions, abortController.signal)
+
+    // 组件已销毁，不再更新状态
+    if (!isMounted.value) return
+
     if (result.success && result.data) {
       if (result.data.answer_analysis) q.answer_analysis = result.data.answer_analysis
       batchProgress.value = ''
@@ -403,10 +500,16 @@ async function handleBatchAIAnalyze(index: number) {
       message.error('AI 生成失败，请重试')
     }
   } catch (error: any) {
+    if (error?.name === 'AbortError') return
+    if (!isMounted.value) return
+
     batchProgress.value = ''
     message.error(error?.response?.data?.detail || 'AI 生成失败')
   } finally {
-    aiAnalyzeLoading.value = false
+    abortController = null
+    if (isMounted.value) {
+      aiAnalyzeLoading.value = false
+    }
   }
 }
 
@@ -423,11 +526,15 @@ async function handleBatchSave() {
   try {
     // 逐个上传（支持多图片）
     for (const q of validQuestions) {
+      // 组件已销毁，停止处理
+      if (!isMounted.value) return
+
       const formData = new FormData()
       formData.append('content', q.content)
       formData.append('answer_analysis', q.answer_analysis)
       formData.append('grade', q.grade)
       formData.append('category', q.category)
+      formData.append('question_type', q.question_type)
       formData.append('difficulty', String(q.difficulty))
 
       // 如果有AI裁剪后的图片，使用裁剪后的路径
@@ -443,12 +550,19 @@ async function handleBatchSave() {
       const response = await api.post('/api/questions', formData, {
         headers: { 'Content-Type': 'multipart/form-data' }
       })
+
+      // 组件已销毁，不再更新状态
+      if (!isMounted.value) return
+
       if (response.data.duplicate) {
         duplicateCount++
       } else {
         successCount++
       }
     }
+
+    // 组件已销毁，不再显示结果
+    if (!isMounted.value) return
 
     let msg = `成功保存 ${successCount} 道题目`
     if (duplicateCount > 0) {
@@ -457,6 +571,8 @@ async function handleBatchSave() {
     message.success(msg)
     router.push('/manage')
   } catch (error: any) {
+    if (!isMounted.value) return
+
     if (successCount > 0) {
       message.warning(`已保存 ${successCount} 道题目，剩余保存失败`)
       router.push('/manage')
@@ -464,7 +580,9 @@ async function handleBatchSave() {
       message.error(error?.response?.data?.detail || '保存失败')
     }
   } finally {
-    loading.value = false
+    if (isMounted.value) {
+      loading.value = false
+    }
   }
 }
 
@@ -562,6 +680,16 @@ const hasBatchContent = computed(() => batchQuestions.value.some(q => q.content.
         <a-form-item label="年级">
           <a-select v-model:value="formState.grade" style="width: 100%">
             <a-select-option v-for="g in gradeStore.grades" :key="g" :value="g">{{ g }}</a-select-option>
+          </a-select>
+        </a-form-item>
+
+        <a-form-item label="题型">
+          <a-select v-model:value="formState.question_type" style="width: 100%" placeholder="选择题型" allow-clear>
+            <a-select-option value="选择题">选择题</a-select-option>
+            <a-select-option value="填空题">填空题</a-select-option>
+            <a-select-option value="解答题">解答题</a-select-option>
+            <a-select-option value="判断题">判断题</a-select-option>
+            <a-select-option value="计算题">计算题</a-select-option>
           </a-select>
         </a-form-item>
 
@@ -706,6 +834,15 @@ const hasBatchContent = computed(() => batchQuestions.value.some(q => q.content.
                   </a-form-item>
                   <a-form-item label="分类" style="flex: 1">
                     <a-input v-model:value="q.category" size="small" placeholder="如：代数、几何" />
+                  </a-form-item>
+                  <a-form-item label="题型" style="flex: 1">
+                    <a-select v-model:value="q.question_type" size="small" placeholder="选择题型" allow-clear>
+                      <a-select-option value="选择题">选择题</a-select-option>
+                      <a-select-option value="填空题">填空题</a-select-option>
+                      <a-select-option value="解答题">解答题</a-select-option>
+                      <a-select-option value="判断题">判断题</a-select-option>
+                      <a-select-option value="计算题">计算题</a-select-option>
+                    </a-select>
                   </a-form-item>
                   <a-form-item label="难度" style="flex: 1">
                     <a-radio-group v-model:value="q.difficulty" size="small">
