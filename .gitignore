@@ -64,8 +64,5 @@ stop.ps1
 # LaTeX缓存
 backend/latex_cache/
 
-# 上传文件
-uploads/
-
 # 文档目录
 docs/
