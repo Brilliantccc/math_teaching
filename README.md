@@ -197,7 +197,7 @@ LLM_BASE_URL=https://api.openai.com/v1
 
 如需商业使用本软件，请联系作者：
 - 作者：Brilliant
-- 联系方式：[请填写联系方式]
+- 联系方式：[3461222397@qq.com]or[202230127106@hunnu.edu.cn]
 
 详见 [LICENSE](LICENSE) 文件获取完整条款。
 
