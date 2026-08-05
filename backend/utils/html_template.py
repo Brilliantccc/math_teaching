@@ -126,7 +126,7 @@ def _render_latex_to_image(latex_str: str, output_dir: str, fontsize: int = 14) 
 
 
 def _preprocess_latex_for_html(text: str, output_dir: str) -> str:
-    """预处理LaTeX公式，将$...$、$$...$$、\( ... \)、\[ ... \]替换为<img>标签
+    r"""预处理LaTeX公式，将$...$、$$...$$、\( ... \)、\[ ... \]替换为<img>标签
 
     Args:
         text: 包含LaTeX公式的文本
@@ -202,6 +202,27 @@ def _process_content_html(content: str, images: List[str], output_dir: str = Non
     # 修复已转义的HTML标签（如 &lt;img → <img）
     content = content.replace('&lt;', '<').replace('&gt;', '>').replace('&amp;', '&')
 
+    # 修复 $...$ 公式内部的 \( \) 被KaTeX误解为数学分隔符的问题
+    # 只处理 $...$ 和 $$...$$ 公式内部的 \( \)
+    def _fix_latex_parens_in_formula(match):
+        formula = match.group(0)
+        # 数据库中存储的是 \（一个反斜杠）+ 空格 + (
+        # 需要替换为普通的 ( 和 )，让KaTeX正常渲染
+        import re as re_inner
+        # 匹配 \( 或 \ ( ，替换为 (
+        formula = re_inner.sub(r'\\\s*\(', '(', formula)
+        # 匹配 \) 或 \ ) ，替换为 )
+        formula = re_inner.sub(r'\\\s*\)', ')', formula)
+        # 修复 < 和 > 被KaTeX误解为HTML标签的问题
+        # 在数学模式中，< 和 > 应该被转义为 \lt 和 \gt
+        formula = formula.replace('<', '\\lt ')
+        formula = formula.replace('>', '\\gt ')
+        return formula
+
+    # 只处理 $...$ 和 $$...$$ 公式内部的内容
+    content = re.sub(r'\$[^$\n]+?\$', _fix_latex_parens_in_formula, content)
+    content = re.sub(r'\$\$[^$]+?\$\$', _fix_latex_parens_in_formula, content, flags=re.DOTALL)
+
     # 处理图片引用 {{img:N}} → <img> 标签
     def replace_image(match):
         img_index = int(match.group(1))
@@ -240,11 +261,48 @@ def _process_content_html(content: str, images: List[str], output_dir: str = Non
 
     content = re.sub(r'<img\s+src="([^"]+)"', fix_img_path, content)
 
-    # 预处理LaTeX公式，将公式替换为图片
-    if output_dir:
-        content = _preprocess_latex_for_html(content, output_dir)
+    # KaTeX方案：保留原始LaTeX标记，由浏览器端KaTeX渲染
+    # 不再将LaTeX转为图片，保持原始 $...$ 和 $$...$$ 标记
+
+    # 处理选项：将 A. B. C. D. 开头的行包裹在 <div class="options"> 中
+    def format_options(text):
+        """将选项格式化为块级元素"""
+        lines = text.split('\n')
+        result_lines = []
+        in_options = False
+
+        for line in lines:
+            stripped = line.strip()
+            # 检查是否是选项行（以 A. B. C. D. 或 A、B、C、D、 开头）
+            if re.match(r'^[A-D][.、．]\s*', stripped) or re.match(r'^[A-D]\s*[.、．]\s*', stripped):
+                if not in_options:
+                    result_lines.append('<div class="options">')
+                    in_options = True
+                result_lines.append(f'<div class="option">{stripped}</div>')
+            else:
+                if in_options:
+                    result_lines.append('</div>')
+                    in_options = False
+                result_lines.append(line)
+
+        if in_options:
+            result_lines.append('</div>')
+
+        return '\n'.join(result_lines)
+
+    content = format_options(content)
 
     return content
+
+
+def _get_katex_base_url() -> str:
+    """获取KaTeX本地文件的base URL（file://协议）"""
+    # 获取项目根目录
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    project_root = os.path.dirname(os.path.dirname(current_dir))
+    katex_dir = os.path.join(project_root, "static", "vendor", "katex")
+    # 转换为file:// URL
+    return "file:///" + katex_dir.replace("\\", "/")
 
 
 def generate_test_html(
@@ -269,6 +327,9 @@ def generate_test_html(
     # 创建临时目录用于LaTeX图片
     latex_dir = tempfile.mkdtemp(prefix='latex_html_')
 
+    # 获取KaTeX本地路径
+    katex_base = _get_katex_base_url()
+
     # 获取样式配置
     if style_config is None:
         from backend.utils.pdf_templates import get_template
@@ -283,22 +344,21 @@ def generate_test_html(
     # 统计各题型
     section_stats = {}
     for q in questions:
-        category = q.get("category", "其他")
-        if category not in section_stats:
-            section_stats[category] = {"count": 0, "score": 0}
-        section_stats[category]["count"] += 1
+        question_type = q.get("question_type", "其他")
+        if question_type not in section_stats:
+            section_stats[question_type] = {"count": 0, "score": 0}
+        section_stats[question_type]["count"] += 1
         q_id = q.get("id")
-        section_stats[category]["score"] += question_scores.get(q_id, 10) if question_scores else 10
+        section_stats[question_type]["score"] += question_scores.get(q_id, 10) if question_scores else 10
 
     # 题型名称映射
     section_names = {
-        "选择题": "一、单项选择题",
-        "单选题": "一、单项选择题",
-        "填空题": "二、填空题",
-        "解答题": "三、解答题",
+        "单项选择": "一、单项选择题",
+        "多项选择": "二、多项选择题",
+        "填空题": "三、填空题",
         "判断题": "四、判断题",
         "计算题": "五、计算题",
-        "应用题": "六、应用题",
+        "解答题": "六、解答题",
     }
 
     # 构建题目HTML
@@ -306,16 +366,32 @@ def generate_test_html(
     question_index = 1
 
     if style_config.group_by_type:
-        # 按题型分组
-        from collections import defaultdict
+        # 按题型分组，按照指定顺序排列
+        from collections import defaultdict, OrderedDict
         grouped = defaultdict(list)
         for q in questions:
-            category = q.get("category", "其他")
-            grouped[category].append(q)
+            question_type = q.get("question_type", "其他")
+            grouped[question_type].append(q)
 
-        for category, items in grouped.items():
-            section_title = section_names.get(category, category)
-            stats = section_stats[category]
+        # 定义题型顺序：单项选择 → 多项选择 → 填空题 → 判断题 → 计算题 → 解答题 → 其他
+        type_order = ["单项选择", "多项选择", "填空题", "判断题", "计算题", "解答题"]
+        ordered_grouped = OrderedDict()
+
+        # 先添加定义的题型
+        for t in type_order:
+            if t in grouped:
+                ordered_grouped[t] = grouped[t]
+
+        # 添加其他未定义的题型
+        for question_type in grouped:
+            if question_type not in ordered_grouped:
+                ordered_grouped[question_type] = grouped[question_type]
+
+        grouped = ordered_grouped
+
+        for question_type, items in grouped.items():
+            section_title = section_names.get(question_type, question_type)
+            stats = section_stats[question_type]
 
             if style_config.show_section_desc:
                 section_desc = f"（本大题共{stats['count']}个小题，共{stats['score']}分）"
@@ -332,7 +408,7 @@ def generate_test_html(
             questions_html += _render_question(q, question_index, style_config, show_answer, question_scores, latex_dir)
             question_index += 1
 
-    # 生成完整HTML（不再依赖MathJax CDN）
+    # 生成完整HTML（使用本地KaTeX文件）
     html = f"""<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
@@ -340,6 +416,8 @@ def generate_test_html(
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{_escape_html(title)}</title>
 
+    <!-- KaTeX CSS (本地) -->
+    <link rel="stylesheet" href="{katex_base}/dist/katex.min.css">
     <style>
         @page {{
             size: A4;
@@ -517,6 +595,34 @@ def generate_test_html(
     <div class="divider"></div>
 
     <div class="footer">— 试卷结束 —</div>
+
+    <!-- KaTeX JS (本地) -->
+    <script defer src="{katex_base}/dist/katex.min.js"></script>
+    <script defer src="{katex_base}/dist/contrib/auto-render.min.js"></script>
+    <script>
+        // 等待KaTeX加载完成后自动渲染LaTeX公式
+        document.addEventListener("DOMContentLoaded", function() {{
+            // 渲染行内公式 $...$（仅使用 $ 和 $$ 分隔符，避免与内容中的括号冲突）
+            renderMathInElement(document.body, {{
+                delimiters: [
+                    {{left: "$$", right: "$$", display: true}},
+                    {{left: "$", right: "$", display: false}}
+                ],
+                throwOnError: false
+            }});
+        }});
+
+        // 如果DOMContentLoaded已经触发，立即执行
+        if (document.readyState !== 'loading') {{
+            renderMathInElement(document.body, {{
+                delimiters: [
+                    {{left: "$$", right: "$$", display: true}},
+                    {{left: "$", right: "$", display: false}}
+                ],
+                throwOnError: false
+            }});
+        }}
+    </script>
 </body>
 </html>"""
 
@@ -545,7 +651,7 @@ def _render_question(
         题目HTML字符串
     """
     content = q.get("content", "")
-    category = q.get("category", "")
+    question_type = q.get("question_type", "")
     images = q.get("images", "[]")
 
     # 解析图片列表
@@ -567,23 +673,23 @@ def _render_question(
     # 题号
     question_html += f'<span class="question-number">{index}.</span>'
 
+    # 分值（放在序号后面）
+    if style_config.score_position == "inline":
+        question_html += f'<span class="score">（{score}分）</span>'
+
     # 题目内容（直接插入HTML，不转义）
     question_html += f'<span class="question-content">{content_html}</span>'
 
     # 答案括号（选择题）
     if style_config.show_answer_bracket and style_config.answer_bracket_position == "right":
-        if category in ["选择题", "单选题"]:
+        if question_type in ["单项选择", "多项选择"]:
             question_html += '<span class="answer-bracket">(　　)</span>'
-
-    # 分值
-    if style_config.score_position == "inline":
-        question_html += f'<span class="score">（{score}分）</span>'
 
     question_html += '\n'
 
     # 答题区域
     if style_config.answer_space_mode != "none" and not show_answer:
-        if category in ["填空题", "解答题", "计算题", "应用题"]:
+        if question_type in ["填空题", "解答题", "计算题"]:
             space_height = style_config.answer_space_fixed if style_config.answer_space_mode == "fixed" else 50
             question_html += f'<div class="answer-space"></div>\n'
 
@@ -593,14 +699,12 @@ def _render_question(
         if answer_analysis:
             answer, analysis = _parse_answer_analysis(answer_analysis)
             if answer:
-                # 预处理答案中的LaTeX
-                if output_dir:
-                    answer = _preprocess_latex_for_html(answer, output_dir)
+                # KaTeX方案：保留原始LaTeX标记，由浏览器端KaTeX渲染
+                # 不再将LaTeX转为图片，保持原始 $...$ 标记
                 question_html += f'<div class="answer"><b>答案：</b>{answer}</div>\n'
             if analysis:
-                # 预处理解析中的LaTeX
-                if output_dir:
-                    analysis = _preprocess_latex_for_html(analysis, output_dir)
+                # KaTeX方案：保留原始LaTeX标记，由浏览器端KaTeX渲染
+                # 不再将LaTeX转为图片，保持原始 $...$ 标记
                 question_html += f'<div class="analysis"><b>解析：</b>{analysis}</div>\n'
 
     question_html += '</div>\n'

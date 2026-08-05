@@ -125,8 +125,21 @@ function handleCelebrationDone() {
   <div class="practice">
     <h2>在线练习</h2>
 
+    <!-- 维护提示 -->
+    <div class="maintenance-notice">
+      <a-result
+        icon="🔧"
+        title="功能维护中"
+        sub-title="在线练习功能正在优化答案匹配算法，预计很快恢复。感谢您的耐心等待！"
+      >
+        <template #extra>
+          <a-tag color="processing">优化中</a-tag>
+        </template>
+      </a-result>
+    </div>
+
     <!-- 配置面板 -->
-    <div v-if="!practiceStarted" class="config-panel">
+    <div v-if="!practiceStarted" class="config-panel" style="opacity: 0.5; pointer-events: none;">
       <div class="config-header">
         <span class="config-icon">📝</span>
         <span>选择练习内容</span>
@@ -139,7 +152,7 @@ function handleCelebrationDone() {
           <a-input v-model:value="formState.tag" placeholder="可选" />
         </a-form-item>
         <a-form-item>
-          <a-button type="primary" :loading="loading" @click="startPractice">
+          <a-button type="primary" :loading="loading" @click="startPractice" disabled>
             开始练习
           </a-button>
         </a-form-item>
@@ -175,6 +188,25 @@ function handleCelebrationDone() {
             :rows="3"
             :disabled="showResult"
           />
+          <div class="answer-hint">
+            <a-collapse :bordered="false" size="small">
+              <a-collapse-panel header="💡 输入提示" key="hint">
+                <div class="hint-content">
+                  <p><strong>支持的输入格式：</strong></p>
+                  <ul>
+                    <li>分数：<code>1/2</code>、<code>\frac{1}{2}</code></li>
+                    <li>小数：<code>0.5</code>、<code>50%</code></li>
+                    <li>乘号：<code>*</code>、<code>×</code>、<code>·</code> 或省略（如 <code>2x</code>）</li>
+                    <li>幂运算：<code>x^2</code>、<code>x**2</code>、<code>x^{2}</code></li>
+                    <li>根号：<code>sqrt(2)</code>、<code>\sqrt{2}</code></li>
+                    <li>带分数：<code>1 1/2</code> 表示 1.5</li>
+                  </ul>
+                  <p><strong>示例：</strong></p>
+                  <p>答案 <code>½</code> 可以输入：<code>1/2</code>、<code>0.5</code>、<code>50%</code>、<code>\frac{1}{2}</code></p>
+                </div>
+              </a-collapse-panel>
+            </a-collapse>
+          </div>
         </div>
 
         <div class="action-buttons">
@@ -216,6 +248,25 @@ function handleCelebrationDone() {
 .practice {
   max-width: 800px;
   margin: 0 auto;
+}
+
+.maintenance-notice {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  border-radius: var(--radius-lg);
+  margin-top: 16px;
+  color: white;
+}
+
+.maintenance-notice :deep(.ant-result-icon) {
+  font-size: 48px;
+}
+
+.maintenance-notice :deep(.ant-result-title) {
+  color: white;
+}
+
+.maintenance-notice :deep(.ant-result-subtitle) {
+  color: rgba(255, 255, 255, 0.85);
 }
 
 .config-panel {
@@ -285,6 +336,36 @@ function handleCelebrationDone() {
 
 .answer-area {
   margin-bottom: 24px;
+}
+
+.answer-hint {
+  margin-top: 8px;
+}
+
+.hint-content {
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.hint-content p {
+  margin: 8px 0 4px;
+}
+
+.hint-content ul {
+  margin: 4px 0;
+  padding-left: 20px;
+}
+
+.hint-content li {
+  margin: 4px 0;
+}
+
+.hint-content code {
+  background: var(--color-bg-hover);
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-family: monospace;
+  font-size: 12px;
 }
 
 .action-buttons {

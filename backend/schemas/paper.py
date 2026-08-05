@@ -32,5 +32,4 @@ class AddPaperQuestionRequest(BaseModel):
     difficulty: int = 1
     answer_analysis: str = ''
     paper_question_number: Optional[int] = None
-    grade: str = '初一'
-    category: str = ''
+    grade: str = '初一上'

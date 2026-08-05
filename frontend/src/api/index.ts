@@ -109,7 +109,6 @@ export async function batchCreateQuestions(questions: Array<{
   content: string
   answer_analysis: string
   grade: string
-  category: string
   question_type?: string
   difficulty: number
   image_path?: string
@@ -195,8 +194,8 @@ export async function normalizeCategories() {
 }
 
 /** 批量更新分类 */
-export async function batchUpdateCategories(ids: number[], category: string) {
-  const res = await api.put('/api/categories/batch-update', { ids, category })
+export async function batchUpdateCategories(ids: number[]) {
+  const res = await api.put('/api/categories/batch-update', { ids })
   return res.data
 }
 

@@ -123,40 +123,104 @@ def _html_to_pdf(html_content: str, output_path: str, latex_dir: str = None) -> 
     Returns:
         是否成功
     """
+    import threading
+
     temp_html_path = None
     try:
-        from playwright.sync_api import sync_playwright
-
         # 确保输出目录存在
-        os.makedirs(os.path.dirname(output_path), exist_ok=True)
+        output_dir = os.path.dirname(output_path)
+        if output_dir:
+            os.makedirs(output_dir, exist_ok=True)
 
         # 创建临时HTML文件
         temp_html_path = output_path.replace('.pdf', '_temp.html')
         with open(temp_html_path, 'w', encoding='utf-8') as f:
             f.write(html_content)
 
-        with sync_playwright() as p:
-            # 启动浏览器
-            browser = p.chromium.launch(headless=True)
-            page = browser.new_page()
+        # 在新线程中运行Playwright（避免Windows asyncio子进程问题）
+        def run_playwright():
+            import asyncio
+            # Windows需要ProactorEventLoop来支持子进程
+            if os.name == 'nt':
+                asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
 
-            # 加载HTML文件
-            page.goto(f'file:///{temp_html_path.replace(os.sep, "/")}')
+            from playwright.sync_api import sync_playwright
 
-            # 直接生成PDF（LaTeX已在HTML中预渲染为图片，无需等待）
-            page.pdf(
-                path=output_path,
-                format='A4',
-                margin={
-                    'top': '20mm',
-                    'bottom': '20mm',
-                    'left': '22mm',
-                    'right': '22mm'
-                },
-                print_background=True
-            )
+            with sync_playwright() as p:
+                # 启动浏览器
+                browser = p.chromium.launch(headless=True)
+                page = browser.new_page()
 
-            browser.close()
+                # 加载HTML文件
+                page.goto(f'file:///{temp_html_path.replace(os.sep, "/")}')
+
+                # 等待KaTeX渲染完成
+                try:
+                    page.wait_for_function(
+                        """() => {
+                            // 检查KaTeX是否已加载
+                            if (typeof window.katex === 'undefined') {
+                                return false;
+                            }
+                            // 检查auto-render是否已加载
+                            if (typeof window.renderMathInElement === 'undefined') {
+                                return false;
+                            }
+                            // 检查是否有KaTeX渲染的元素
+                            const katexElements = document.querySelectorAll('.katex');
+                            // 检查是否还有未渲染的$符号（在文本节点中）
+                            const walker = document.createTreeWalker(
+                                document.body,
+                                NodeFilter.SHOW_TEXT,
+                                null,
+                                false
+                            );
+                            let hasUnrenderedDollar = false;
+                            while (walker.nextNode()) {
+                                const text = walker.currentNode.textContent;
+                                if (text.includes('$') && !walker.currentNode.parentElement.classList.contains('katex')) {
+                                    hasUnrenderedDollar = true;
+                                    break;
+                                }
+                            }
+                            // 如果有未渲染的$，说明还没完成
+                            if (hasUnrenderedDollar) {
+                                return false;
+                            }
+                            return true;
+                        }""",
+                        timeout=10000  # 最多等待10秒
+                    )
+                except Exception as e:
+                    # 如果等待超时，继续生成PDF
+                    print(f"[PDF] KaTeX render wait timeout: {e}")
+
+                # 额外等待确保渲染完成
+                page.wait_for_timeout(1000)
+
+                # 生成PDF
+                page.pdf(
+                    path=output_path,
+                    format='A4',
+                    margin={
+                        'top': '20mm',
+                        'bottom': '20mm',
+                        'left': '22mm',
+                        'right': '22mm'
+                    },
+                    print_background=True
+                )
+
+                browser.close()
+
+        # 在新线程中运行
+        thread = threading.Thread(target=run_playwright)
+        thread.start()
+        thread.join(timeout=30)  # 最多等待30秒
+
+        if thread.is_alive():
+            print("[PDF] Playwright timeout")
+            return False
 
         print(f"[PDF] Successfully generated: {output_path}")
         return True
@@ -199,6 +263,23 @@ def _process_latex_in_text(text: str, latex_dir: str) -> str:
     """处理文本中的 LaTeX 公式，将 $...$ 转换为可显示的图片"""
     if not text:
         return ""
+
+    # 修复 $...$ 公式内部的 \( \) 被KaTeX误解为数学分隔符的问题
+    def _fix_latex_parens_in_formula(match):
+        formula = match.group(0)
+        # 匹配 \( 或 \ ( ，替换为 (
+        formula = re.sub(r'\\\s*\(', '(', formula)
+        # 匹配 \) 或 \ ) ，替换为 )
+        formula = re.sub(r'\\\s*\)', ')', formula)
+        # 修复 < 和 > 被KaTeX误解为HTML标签的问题
+        # 在数学模式中，< 和 > 应该被转义为 \lt 和 \gt
+        formula = formula.replace('<', '\\lt ')
+        formula = formula.replace('>', '\\gt ')
+        return formula
+
+    # 只处理 $...$ 和 $$...$$ 公式内部的内容
+    text = re.sub(r'\$[^$\n]+?\$', _fix_latex_parens_in_formula, text)
+    text = re.sub(r'\$\$[^$]+?\$\$', _fix_latex_parens_in_formula, text, flags=re.DOTALL)
 
     # 第一步：用占位符提取所有 LaTeX 公式，避免后续处理干扰
     formulas = []
@@ -470,12 +551,12 @@ def _generate_pdf_with_reportlab(
     # 统计各题型数量和分值
     section_stats = {}
     for q in questions:
-        category = q.get("category", "其他")
-        if category not in section_stats:
-            section_stats[category] = {"count": 0, "score": 0}
-        section_stats[category]["count"] += 1
+        question_type = q.get("question_type", "其他")
+        if question_type not in section_stats:
+            section_stats[question_type] = {"count": 0, "score": 0}
+        section_stats[question_type]["count"] += 1
         q_id = q.get("id")
-        section_stats[category]["score"] += question_scores.get(q_id, 10) if question_scores else 10
+        section_stats[question_type]["score"] += question_scores.get(q_id, 10) if question_scores else 10
 
     story = []
 
@@ -499,32 +580,47 @@ def _generate_pdf_with_reportlab(
 
     # 题型分组标题映射
     section_names = {
-        "选择题": "一、单项选择题",
-        "单选题": "一、单项选择题",
-        "填空题": "二、填空题",
-        "解答题": "三、解答题",
+        "单项选择": "一、单项选择题",
+        "多项选择": "二、多项选择题",
+        "填空题": "三、填空题",
         "判断题": "四、判断题",
         "计算题": "五、计算题",
-        "应用题": "六、应用题",
+        "解答题": "六、解答题",
     }
 
     # 按题型分组（如果启用）
     if style_config.group_by_type:
-        from collections import defaultdict
+        from collections import defaultdict, OrderedDict
         grouped = defaultdict(list)
         for i, q in enumerate(questions):
-            category = q.get("category", "其他")
-            grouped[category].append((i, q))
+            question_type = q.get("question_type", "其他")
+            grouped[question_type].append((i, q))
+
+        # 定义题型顺序：单项选择 → 多项选择 → 填空题 → 判断题 → 计算题 → 解答题 → 其他
+        type_order = ["单项选择", "多项选择", "填空题", "判断题", "计算题", "解答题"]
+        ordered_grouped = OrderedDict()
+
+        # 先添加定义的题型
+        for t in type_order:
+            if t in grouped:
+                ordered_grouped[t] = grouped[t]
+
+        # 添加其他未定义的题型
+        for question_type in grouped:
+            if question_type not in ordered_grouped:
+                ordered_grouped[question_type] = grouped[question_type]
+
+        grouped = ordered_grouped
 
         question_index = 1
         section_num = 1
-        for category, items in grouped.items():
+        for question_type, items in grouped.items():
             # 添加题型标题
-            section_title = section_names.get(category, f"{_to_chinese_num(section_num)}、{category}")
+            section_title = section_names.get(question_type, f"{_to_chinese_num(section_num)}、{question_type}")
 
             # 添加题型描述
-            if style_config.show_section_desc and category in section_stats:
-                stats = section_stats[category]
+            if style_config.show_section_desc and question_type in section_stats:
+                stats = section_stats[question_type]
                 section_desc = f"（本大题共{stats['count']}个小题，共{stats['score']}分）"
                 section_full = f"{section_title}{section_desc}"
                 story.append(Paragraph(f"<b>{section_full}</b>", section_style))
@@ -559,7 +655,7 @@ def _generate_pdf_with_reportlab(
                     story.append(Paragraph(f"（{score}分）", score_style))
 
                 # 答题区域
-                _add_answer_space(story, style_config, q.get("category"))
+                _add_answer_space(story, style_config, q.get("question_type"))
 
                 # 答案与解析
                 _add_answer_and_analysis(story, q, style_config, latex_dir, answer_style, answer_analysis_style)
@@ -592,7 +688,7 @@ def _generate_pdf_with_reportlab(
                 story.append(Paragraph(f"（{score}分）", score_style))
 
             # 答题区域
-            _add_answer_space(story, style_config, q.get("category"))
+            _add_answer_space(story, style_config, q.get("question_type"))
 
             # 答案与解析
             _add_answer_and_analysis(story, q, style_config, latex_dir, answer_style, answer_analysis_style)
@@ -613,7 +709,7 @@ def _to_chinese_num(num: int) -> str:
     return str(num)
 
 
-def _add_answer_space(story, style_config, category: str = None):
+def _add_answer_space(story, style_config, question_type: str = None):
     """根据配置和题型添加答题区域"""
     from reportlab.platypus import Spacer
     from reportlab.lib.units import mm
@@ -628,14 +724,14 @@ def _add_answer_space(story, style_config, category: str = None):
 
     # auto模式：根据题型自动调整
     space_map = {
-        "选择题": 15,
+        "单项选择": 15,
+        "多项选择": 15,
         "填空题": 25,
-        "解答题": 50,
         "判断题": 15,
-        "计算题": 40,
-        "应用题": 60,
+        "计算题": 30,
+        "解答题": 50,
     }
-    space_mm = space_map.get(category, 30)
+    space_mm = space_map.get(question_type, 30)
     story.append(Spacer(1, space_mm * mm))
 
 

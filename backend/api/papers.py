@@ -45,7 +45,7 @@ async def get_papers(
 @router.post("", response_model=dict)
 async def create_paper(
     name: str = Form(default=''),
-    grade: str = Form(default='初一'),
+    grade: str = Form(default='初一上'),
     source: str = Form(default=''),
     pdf: Optional[UploadFile] = File(default=None),
     image: Optional[UploadFile] = File(default=None),
@@ -238,7 +238,6 @@ async def add_paper_question(
         answer_analysis=data.answer_analysis,
         paper_question_number=data.paper_question_number,
         grade=data.grade,
-        category=data.category,
         source=f"{paper.name} 第{data.paper_question_number or '?'}题",
         image_path=paper.image_path,
         paper_id=p_id,

@@ -70,6 +70,7 @@ async function exportPdf(id: number, name: string) {
       a.click()
       URL.revokeObjectURL(url)
       message.success('PDF 已导出')
+      exportState[id] = { exporting: false, progress: 0 }
       return
     }
 

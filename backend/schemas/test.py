@@ -35,9 +35,8 @@ class AutoGenerateRequest(BaseModel):
     count: int = Field(default=10, ge=1, le=100)
     difficulties: List[int] = [1, 2, 3]
     grade: str = ''
-    category: str = ''
     question_type: str = ''  # 单一题型筛选
-    question_type_counts: Dict[str, int] = {}  # 按题型配置数量 {"选择题": 5, "填空题": 3, "解答题": 2}
+    question_type_counts: Dict[str, int] = {}  # 按题型配置数量 {"单项选择": 5, "多项选择": 2, "填空题": 3, "解答题": 2}
 
 
 class PreviewPdfRequest(BaseModel):

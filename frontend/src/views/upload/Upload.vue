@@ -55,14 +55,14 @@ const mode = ref<'single' | 'batch'>('single')
 const formState = reactive({
   stem: '',
   answer_analysis: '',
-  grade: gradeStore.currentGrade === '全部' ? '初一' : gradeStore.currentGrade,
-  category: '',
+  grade: gradeStore.currentGrade === '全部' ? '初一上' : gradeStore.currentGrade,
   question_type: '',
-  difficulty: 1,
-  image_descriptions: [] as string[],
-  croppedImages: [] as string[] // AI裁剪后的图片路径
+  difficulty: 1
 })
 const fileList = ref<any[]>([])
+
+// 年级选项（只保留具体的年级，排除"全部"、"初中全部"、"高中全部"等筛选选项）
+const gradeOptions = gradeStore.grades.filter(g => !['全部', '初中全部', '高中全部'].includes(g))
 
 // 批量模式
 const batchFileList = ref<any[]>([])
@@ -70,13 +70,10 @@ const batchQuestions = ref<Array<{
   content: string
   answer_analysis: string
   grade: string
-  category: string
   question_type: string
   difficulty: number
   imageFiles?: File[]
   imagePreviews?: string[]
-  image_descriptions?: string[]
-  croppedImages?: string[] // AI裁剪后的图片路径
 }>>([])
 const editingIndex = ref<number | null>(null)
 
@@ -215,40 +212,25 @@ async function handleAIExtract() {
       singleProgress.value = '识别成功，正在填充表单...'
       const items = Array.isArray(result.data) ? result.data : [result.data]
       if (items.length === 1) {
-        // 单题：直接填充表单
+        // 单题：直接填充表单（不处理图片）
         const data = items[0]
         if (data.content) formState.stem = data.content
         if (data.answer_analysis) formState.answer_analysis = data.answer_analysis
         if (data.difficulty) formState.difficulty = data.difficulty
-        if (data.category) formState.category = data.category
         if (data.question_type) formState.question_type = data.question_type
-        // 存储图片描述和裁剪后的图片路径
-        if (data.image_descriptions) {
-          formState.image_descriptions = data.image_descriptions
-        }
-        // 保存裁剪后的图片路径到 formState
-        if (data.cropped_images && data.cropped_images.length > 0) {
-          formState.croppedImages = data.cropped_images
-        }
         singleProgress.value = ''
         message.success('AI 识别完成，已自动填充表单')
       } else {
-        // 多题：添加到批量列表并切换模式
+        // 多题：添加到批量列表并切换模式（不处理图片）
         items.forEach((data: any) => {
           batchQuestions.value.push({
             content: data.content || '',
             answer_analysis: data.answer_analysis || '',
             grade: formState.grade,
-            category: data.category || '',
             question_type: data.question_type || '',
             difficulty: data.difficulty || 1,
-            // 如果有裁剪后的图片，使用裁剪后的；否则使用原始图片
             imageFiles: [],
-            imagePreviews: data.cropped_images && data.cropped_images.length > 0
-              ? data.cropped_images.map((img: string) => img.startsWith('http') ? img : `${api.defaults.baseURL}/${img}`)
-              : [],
-            image_descriptions: data.image_descriptions || [],
-            croppedImages: data.cropped_images || []
+            imagePreviews: []
           })
         })
         mode.value = 'batch'
@@ -288,7 +270,7 @@ async function handleAIAnalyze() {
   analyzeProgress.value = 'AI 正在分析题目...'
   try {
     abortController = new AbortController()
-    const result = await analyzeQuestion(formState.stem, formState.image_descriptions, abortController.signal)
+    const result = await analyzeQuestion(formState.stem, [], abortController.signal)
 
     // 组件已销毁，不再更新状态
     if (!isMounted.value) return
@@ -328,15 +310,11 @@ async function handleSubmit() {
     formData.append('content', formState.stem)
     formData.append('answer_analysis', formState.answer_analysis)
     formData.append('grade', formState.grade)
-    formData.append('category', formState.category)
     formData.append('question_type', formState.question_type)
     formData.append('difficulty', String(formState.difficulty))
 
-    // 如果有AI裁剪后的图片，使用裁剪后的路径
-    if (formState.croppedImages && formState.croppedImages.length > 0) {
-      formData.append('existing_images', JSON.stringify(formState.croppedImages))
-    } else if (fileList.value.length > 0) {
-      // 否则上传原始图片
+    // 只提交用户自己选择的图片
+    if (fileList.value.length > 0) {
       fileList.value.forEach(fileObj => {
         const file = fileObj.originFileObj || fileObj
         if (file instanceof File) {
@@ -398,21 +376,15 @@ async function handleBatchAIExtract() {
       if (result.success && result.data) {
         const items = Array.isArray(result.data) ? result.data : [result.data]
         items.forEach((data: any) => {
-          // 如果有裁剪后的图片，使用裁剪后的；否则使用原始图片
-          const hasCroppedImages = data.cropped_images && data.cropped_images.length > 0
+          // 不再处理图片，只填充文字内容
           newQuestions.push({
             content: data?.content || '',
             answer_analysis: data?.answer_analysis || '',
             grade: formState.grade,
-            category: data?.category || '',
             question_type: data?.question_type || '',
             difficulty: data?.difficulty || 1,
             imageFiles: [],
-            imagePreviews: hasCroppedImages
-              ? data.cropped_images.map((img: string) => img.startsWith('http') ? img : `${api.defaults.baseURL}/${img}`)
-              : [createTrackedBlobUrl(files[idx])],
-            image_descriptions: data?.image_descriptions || [],
-            croppedImages: data.cropped_images || []
+            imagePreviews: []
           })
         })
         successCount++
@@ -454,12 +426,10 @@ function addBatchQuestion() {
     content: '',
     answer_analysis: '',
     grade: formState.grade,
-    category: '',
     question_type: '',
     difficulty: 1,
     imageFiles: [],
-    imagePreviews: [],
-    image_descriptions: []
+    imagePreviews: []
   })
   editingIndex.value = batchQuestions.value.length - 1
 }
@@ -486,7 +456,7 @@ async function handleBatchAIAnalyze(index: number) {
   batchProgress.value = `正在为第 ${index + 1} 题生成答案解析...`
   try {
     abortController = new AbortController()
-    const result = await analyzeQuestion(q.content, q.image_descriptions, abortController.signal)
+    const result = await analyzeQuestion(q.content, [], abortController.signal)
 
     // 组件已销毁，不再更新状态
     if (!isMounted.value) return
@@ -533,15 +503,11 @@ async function handleBatchSave() {
       formData.append('content', q.content)
       formData.append('answer_analysis', q.answer_analysis)
       formData.append('grade', q.grade)
-      formData.append('category', q.category)
       formData.append('question_type', q.question_type)
       formData.append('difficulty', String(q.difficulty))
 
-      // 如果有AI裁剪后的图片，使用裁剪后的路径
-      if (q.croppedImages && q.croppedImages.length > 0) {
-        formData.append('existing_images', JSON.stringify(q.croppedImages))
-      } else if (q.imageFiles && q.imageFiles.length > 0) {
-        // 否则上传原始图片
+      // 只提交用户自己选择的图片
+      if (q.imageFiles && q.imageFiles.length > 0) {
         q.imageFiles.forEach(file => {
           formData.append('images', file)
         })
@@ -679,13 +645,14 @@ const hasBatchContent = computed(() => batchQuestions.value.some(q => q.content.
 
         <a-form-item label="年级">
           <a-select v-model:value="formState.grade" style="width: 100%">
-            <a-select-option v-for="g in gradeStore.grades" :key="g" :value="g">{{ g }}</a-select-option>
+            <a-select-option v-for="g in gradeOptions" :key="g" :value="g">{{ g }}</a-select-option>
           </a-select>
         </a-form-item>
 
         <a-form-item label="题型">
           <a-select v-model:value="formState.question_type" style="width: 100%" placeholder="选择题型" allow-clear>
-            <a-select-option value="选择题">选择题</a-select-option>
+            <a-select-option value="单项选择">单项选择</a-select-option>
+            <a-select-option value="多项选择">多项选择</a-select-option>
             <a-select-option value="填空题">填空题</a-select-option>
             <a-select-option value="解答题">解答题</a-select-option>
             <a-select-option value="判断题">判断题</a-select-option>
@@ -738,7 +705,7 @@ const hasBatchContent = computed(() => batchQuestions.value.some(q => q.content.
 
           <a-form-item label="默认年级">
             <a-select v-model:value="formState.grade" style="width: 100%">
-              <a-select-option v-for="g in gradeStore.grades" :key="g" :value="g">{{ g }}</a-select-option>
+              <a-select-option v-for="g in gradeOptions" :key="g" :value="g">{{ g }}</a-select-option>
             </a-select>
           </a-form-item>
 
@@ -829,15 +796,13 @@ const hasBatchContent = computed(() => batchQuestions.value.some(q => q.content.
                 <div class="batch-item-fields">
                   <a-form-item label="年级" style="flex: 1">
                     <a-select v-model:value="q.grade" size="small">
-                      <a-select-option v-for="g in gradeStore.grades" :key="g" :value="g">{{ g }}</a-select-option>
+                      <a-select-option v-for="g in gradeOptions" :key="g" :value="g">{{ g }}</a-select-option>
                     </a-select>
-                  </a-form-item>
-                  <a-form-item label="分类" style="flex: 1">
-                    <a-input v-model:value="q.category" size="small" placeholder="如：代数、几何" />
                   </a-form-item>
                   <a-form-item label="题型" style="flex: 1">
                     <a-select v-model:value="q.question_type" size="small" placeholder="选择题型" allow-clear>
-                      <a-select-option value="选择题">选择题</a-select-option>
+                      <a-select-option value="单项选择">单项选择</a-select-option>
+                      <a-select-option value="多项选择">多项选择</a-select-option>
                       <a-select-option value="填空题">填空题</a-select-option>
                       <a-select-option value="解答题">解答题</a-select-option>
                       <a-select-option value="判断题">判断题</a-select-option>

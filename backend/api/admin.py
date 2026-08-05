@@ -264,8 +264,7 @@ async def import_questions(
             source=q.get("source", ""),
             image_path=q.get("image_path", ""),
             answer_analysis=q.get("answer_analysis", ""),
-            grade=q.get("grade", "初一"),
-            category=q.get("category", ""),
+            grade=q.get("grade", "初一上"),
             paper_id=q.get("paper_id"),
             paper_question_number=q.get("paper_question_number"),
             created_by=current_user.id
@@ -283,109 +282,3 @@ async def import_questions(
 
 
 # ─── 题目分类标准化 ─────────────────────────────────────────
-
-@router.get("/categories/standard")
-async def get_standard_categories(
-    current_user: User = Depends(require_teacher)
-):
-    """获取标准题目分类列表"""
-    from backend.models.category import STANDARD_CATEGORIES, get_all_standard_categories
-
-    return {
-        "categories": get_all_standard_categories(),
-        "details": STANDARD_CATEGORIES
-    }
-
-
-@router.get("/categories/current")
-async def get_current_categories(
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_teacher)
-):
-    """获取数据库中当前使用的所有分类"""
-    from sqlalchemy import func
-
-    result = await db.execute(
-        select(
-            Question.category,
-            func.count(Question.id).label('count')
-        )
-        .where(Question.category != '')
-        .group_by(Question.category)
-        .order_by(func.count(Question.id).desc())
-    )
-
-    categories = [
-        {"name": row[0], "count": row[1]}
-        for row in result.all()
-    ]
-
-    return {"categories": categories}
-
-
-@router.post("/categories/normalize")
-async def normalize_categories(
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_admin)
-):
-    """将所有题目的分类标准化为标准分类"""
-    from backend.models.category import normalize_category
-
-    # 获取所有题目
-    result = await db.execute(select(Question))
-    questions = result.scalars().all()
-
-    updated = 0
-    unchanged = 0
-    changes = []
-
-    for q in questions:
-        if not q.category:
-            continue
-
-        normalized = normalize_category(q.category)
-        if normalized != q.category:
-            old_category = q.category
-            q.category = normalized
-            updated += 1
-            changes.append({
-                "id": q.id,
-                "old": old_category,
-                "new": normalized
-            })
-        else:
-            unchanged += 1
-
-    await db.commit()
-
-    return {
-        "message": f"标准化完成：更新 {updated} 题，未改变 {unchanged} 题",
-        "updated": updated,
-        "unchanged": unchanged,
-        "changes": changes[:100]  # 只返回前100条变更记录
-    }
-
-
-@router.put("/categories/batch-update")
-async def batch_update_categories(
-    data: BatchUpdateCategoriesRequest,
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_admin)
-):
-    """批量更新题目分类"""
-    if not data.ids:
-        raise HTTPException(status_code=400, detail="请选择要更新的题目")
-    if not data.category:
-        raise HTTPException(status_code=400, detail="请指定目标分类")
-
-    result = await db.execute(
-        select(Question).where(Question.id.in_(data.ids))
-    )
-    questions = result.scalars().all()
-
-    for q in questions:
-        q.category = data.category
-
-    await db.commit()
-
-    return {"message": f"已更新 {len(questions)} 道题目的分类为 '{data.category}'"}

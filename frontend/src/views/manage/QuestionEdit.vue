@@ -6,8 +6,8 @@ import { message } from 'ant-design-vue'
 import LatexEditor from '@/components/editor/LatexEditor.vue'
 import { GRADES } from '@/stores/grade'
 
-// 年级选项（排除"全部"）
-const gradeOptions = GRADES.filter(g => g !== '全部')
+// 年级选项（只保留具体的年级，排除"全部"、"初中全部"、"高中全部"等筛选选项）
+const gradeOptions = GRADES.filter(g => !['全部', '初中全部', '高中全部'].includes(g))
 
 const route = useRoute()
 const router = useRouter()
@@ -15,7 +15,7 @@ const router = useRouter()
 const formState = ref({
   content: '',
   answer_analysis: '',
-  grade: '初一',
+  grade: '初一上',
   question_type: '',
   difficulty: 1
 })
@@ -198,7 +198,8 @@ onMounted(async () => {
 
       <a-form-item label="题型">
         <a-select v-model:value="formState.question_type" placeholder="选择题型" style="width: 120px" allow-clear>
-          <a-select-option value="选择题">选择题</a-select-option>
+          <a-select-option value="单项选择">单项选择</a-select-option>
+          <a-select-option value="多项选择">多项选择</a-select-option>
           <a-select-option value="填空题">填空题</a-select-option>
           <a-select-option value="解答题">解答题</a-select-option>
           <a-select-option value="判断题">判断题</a-select-option>

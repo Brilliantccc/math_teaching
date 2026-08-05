@@ -11,8 +11,7 @@ class QuestionCreate(BaseModel):
     difficulty: int = Field(default=1, ge=1, le=3)
     source: str = ''
     answer_analysis: str = ''
-    grade: str = '初一'
-    category: str = ''
+    grade: str = '初一上'
     paper_id: Optional[int] = None
     paper_question_number: Optional[int] = None
 
@@ -25,7 +24,6 @@ class QuestionUpdate(BaseModel):
     source: Optional[str] = None
     answer_analysis: Optional[str] = None
     grade: Optional[str] = None
-    category: Optional[str] = None
     image_path: Optional[str] = None
     images: Optional[str] = None
 
@@ -41,8 +39,7 @@ class QuestionResponse(BaseModel):
     images: str = '[]'  # JSON array: 多图片URL列表
     answer_analysis: str
     grade: str
-    category: str
-    question_type: str = ''  # 题型：选择题/填空题/解答题/判断题/计算题
+    question_type: str = ''  # 题型：单项选择/多项选择/填空题/解答题/判断题/计算题
     paper_id: Optional[int] = None
     paper_question_number: Optional[int] = None
     created_by: Optional[int] = None
@@ -63,9 +60,8 @@ class QuestionBatchItem(BaseModel):
     """批量创建中的单个题目"""
     content: str = ''
     answer_analysis: str = ''
-    grade: str = '初一'
-    category: str = ''
-    question_type: str = ''  # 题型：选择题/填空题/解答题/判断题/计算题
+    grade: str = '初一上'
+    question_type: str = ''  # 题型：单项选择/多项选择/填空题/解答题/判断题/计算题
     difficulty: int = 1
     image_path: str = ''
     images: str = '[]'  # JSON array: 多图片URL列表

@@ -19,7 +19,6 @@ class ImportQuestionsRequest(BaseModel):
 class BatchUpdateCategoriesRequest(BaseModel):
     """批量更新分类请求"""
     ids: List[int]
-    category: str
 
 
 class ImportBackupResponse(BaseModel):

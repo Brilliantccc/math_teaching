@@ -8,7 +8,7 @@ import { GRADES, MIDDLE_SCHOOL_GRADES, HIGH_SCHOOL_GRADES } from '@/constants'
 export { GRADES }
 
 export const useGradeStore = defineStore('grade', () => {
-  const currentGrade = ref(localStorage.getItem('grade') || '初一')
+  const currentGrade = ref(localStorage.getItem('grade') || '初一上')
 
   function setGrade(grade: string) {
     currentGrade.value = grade

@@ -20,7 +20,6 @@ const initialLoading = ref(true)
 
 const filters = ref({
   keyword: '',
-  category: '',
   difficulty: undefined as number | undefined
 })
 
@@ -35,7 +34,6 @@ async function loadQuestions() {
         per_page: perPage.value,
         grade: gradeStore.getGradeParam(),
         keyword: filters.value.keyword,
-        category: filters.value.category,
         difficulty: filters.value.difficulty
       }
     })
@@ -134,17 +132,6 @@ onMounted(() => {
         <a-select-option v-for="g in GRADES" :key="g" :value="g">{{ g }}</a-select-option>
       </a-select>
       <a-select
-        v-model:value="filters.category"
-        placeholder="选择分类"
-        allow-clear
-        style="width: 150px"
-        @change="handleSearch"
-      >
-        <a-select-option v-for="cat in categories" :key="cat" :value="cat">
-          {{ cat }}
-        </a-select-option>
-      </a-select>
-      <a-select
         v-model:value="filters.difficulty"
         placeholder="选择难度"
         allow-clear
@@ -174,7 +161,6 @@ onMounted(() => {
                 {{ getDifficultyText(q.difficulty) }}
               </a-tag>
               <span class="grade">{{ q.grade }}</span>
-              <span v-if="q.category" class="category">{{ q.category }}</span>
             </div>
           </div>
 
@@ -294,7 +280,7 @@ onMounted(() => {
   border-top: 1px solid var(--color-border);
 }
 
-.grade, .category {
+.grade {
   font-size: 12px;
   color: var(--color-text-secondary);
   padding: 2px 8px;

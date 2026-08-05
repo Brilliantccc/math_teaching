@@ -148,8 +148,6 @@ async def auto_generate_test(
                 query = query.where(Question.difficulty.in_(data.difficulties))
             if grade_list:
                 query = query.where(Question.grade.in_(grade_list))
-            if data.category:
-                query = query.where(Question.category == data.category)
 
             result = await db.execute(query)
             questions = result.scalars().all()
@@ -170,8 +168,6 @@ async def auto_generate_test(
         query = query.where(Question.difficulty.in_(data.difficulties))
     if grade_list:
         query = query.where(Question.grade.in_(grade_list))
-    if data.category:
-        query = query.where(Question.category == data.category)
     if data.question_type:
         query = query.where(Question.question_type == data.question_type)
 
@@ -245,13 +241,8 @@ def _generate_pdf_task(
     }
 
     try:
-        # 同步获取数据库会话（后台任务中）
-        from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
-        from sqlalchemy.orm import sessionmaker
         from backend.config import settings
 
-        # 这里需要同步方式获取题目数据
-        # 简化实现：直接读取已有的题目信息（从任务参数传入）
         _pdf_tasks[task_id]["progress"] = 30
 
         # 生成PDF
@@ -263,9 +254,7 @@ def _generate_pdf_task(
 
         _pdf_tasks[task_id]["progress"] = 50
 
-        # 注意：这里需要从question_ids重新查询题目
-        # 简化版本：假设题目数据已准备好
-        # 实际应从数据库重新查询
+        # 同步获取题目数据
         from backend.models.question import Question
         from backend.database import async_session
 
@@ -276,7 +265,15 @@ def _generate_pdf_task(
                 )
                 return [q.to_dict() for q in result.scalars().all()]
 
-        questions_data = asyncio.run(fetch_questions())
+        # 使用 asyncio.run 获取数据
+        try:
+            loop = asyncio.get_running_loop()
+            # 如果有运行中的循环，使用线程池
+            import concurrent.futures
+            with concurrent.futures.ThreadPoolExecutor() as pool:
+                questions_data = pool.submit(asyncio.run, fetch_questions()).result()
+        except RuntimeError:
+            questions_data = asyncio.run(fetch_questions())
 
         _pdf_tasks[task_id]["progress"] = 70
 

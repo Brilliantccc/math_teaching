@@ -37,7 +37,6 @@ const previewLoading = ref(false)
 
 // 分类列表（从数据库动态加载）
 const categories = ref<string[]>([])
-const categoryLoading = ref(false)
 
 // 题型列表（从数据库动态加载）
 const questionTypes = ref<{type: string, count: number}[]>([])
@@ -58,7 +57,8 @@ const difficultyCount = ref({
 
 // 按题型生成数量
 const questionTypeCounts = ref<Record<string, number>>({
-  '选择题': 5,
+  '单项选择': 5,
+  '多项选择': 2,
   '填空题': 3,
   '解答题': 2
 })
@@ -69,7 +69,6 @@ const formState = ref({
   tags: [] as string[],
   difficulties: [1, 2, 3],
   grade: gradeStore.currentGrade === '全部' ? '全部' : gradeStore.currentGrade,
-  category: '',
   question_type: ''
 })
 
@@ -154,14 +153,11 @@ function clearAllQuestions() {
 
 // 加载分类列表
 async function loadCategories() {
-  categoryLoading.value = true
   try {
     const response = await api.get('/api/questions/categories')
     categories.value = response.data.categories || []
   } catch (error) {
     console.error('Failed to load categories:', error)
-  } finally {
-    categoryLoading.value = false
   }
 }
 
@@ -219,7 +215,6 @@ async function appendGenerate() {
         tags: formState.value.tags,
         difficulties: formState.value.difficulties,
         grade: gradeParam,
-        category: formState.value.category,
         question_type: formState.value.question_type
       })
       allNewIds = response.data.question_ids || []
@@ -232,7 +227,6 @@ async function appendGenerate() {
             tags: formState.value.tags,
             difficulties: [parseInt(diff)],
             grade: gradeParam,
-            category: formState.value.category,
             question_type: formState.value.question_type
           })
           allNewIds.push(...response.data.question_ids)
@@ -285,7 +279,8 @@ async function startGenerate() {
 // 获取题型对应的颜色
 function getTypeColor(type: string): string {
   const colorMap: Record<string, string> = {
-    '选择题': 'blue',
+    '单项选择': 'blue',
+    '多项选择': 'purple',
     '填空题': 'green',
     '解答题': 'orange',
     '判断题': 'purple',

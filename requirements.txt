@@ -23,7 +23,6 @@ langchain-openai>=0.0.5
 langchain-core>=0.1.0
 
 # PDF生成
-PyMuPDF>=1.23.0
 reportlab>=4.0.0
 matplotlib>=3.7.0
 playwright>=1.40.0
@@ -33,3 +32,6 @@ Pillow>=10.0.0
 
 # HTTP客户端
 httpx>=0.25.0
+
+# 数学表达式比较
+sympy>=1.12.0

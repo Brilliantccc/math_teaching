@@ -40,8 +40,7 @@ export interface Question {
   images: string  // JSON数组格式的图片路径列表
   answer_analysis: string
   grade: string
-  category: string
-  question_type: string  // 题型：选择题/填空题/解答题/判断题/计算题
+  question_type: string  // 题型：单项选择/多项选择/填空题/解答题/判断题/计算题
   paper_id: number | null
   paper_question_number: number | null
   created_by: number | null
@@ -98,7 +97,6 @@ export interface AutoGenerateRequest {
   count?: number
   difficulties?: number[]
   grade?: string
-  category?: string
   question_type?: string  // 单一题型筛选
   question_type_counts?: Record<string, number>  // 按题型配置数量
 }
@@ -198,8 +196,7 @@ export interface LLMExtractResult {
   answer_analysis: string
   tags: string[]
   difficulty: number
-  category: string
-  question_type: string  // 题型：选择题/填空题/解答题/判断题/计算题
+  question_type: string  // 题型：单项选择/多项选择/填空题/解答题/判断题/计算题
 }
 
 /** LLM 分析结果 */
@@ -248,7 +245,6 @@ export interface BatchUpdateRequest {
 /** 批量更新分类请求 */
 export interface BatchUpdateCategoriesRequest {
   ids: number[]
-  category: string
 }
 
 /** 错题重练请求 */
@@ -257,7 +253,7 @@ export interface RetryWrongQuestionsRequest {
 }
 
 /** 年级选项 */
-export type GradeOption = '初一' | '初二' | '初三' | '高一' | '高二' | '高三'
+export type GradeOption = '初一上' | '初一下' | '初二上' | '初二下' | '初三上' | '初三下' | '高一上' | '高一下' | '高二上' | '高二下' | '高三上' | '高三下'
 
 /** 难度选项 */
 export type DifficultyOption = 1 | 2 | 3

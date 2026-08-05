@@ -65,6 +65,9 @@ def normalize_answer_analysis(answer_analysis: str) -> str:
     if not answer_analysis:
         return answer_analysis
 
+    # 清理字面的换行符（两个字符：反斜杠+n）
+    answer_analysis = answer_analysis.replace('\\n', '')
+
     # 规范化 LaTeX
     answer_analysis = normalize_latex(answer_analysis)
 
@@ -82,8 +85,8 @@ def normalize_answer_analysis(answer_analysis: str) -> str:
     return answer_analysis
 
 
-def resize_image(image_data: bytes, max_size: int = 2048) -> bytes:
-    """压缩图片到合理尺寸"""
+def resize_image(image_data: bytes, max_size: int = 1280) -> bytes:
+    """压缩图片到合理尺寸（1280px足够AI识别，速度更快）"""
     try:
         img = Image.open(io.BytesIO(image_data))
         # 转换为RGB（处理RGBA、P等模式）
@@ -224,8 +227,8 @@ async def extract_from_image(
             print(f"[LLM] Image resized: {len(image_data)} -> {len(resized_data)} bytes")
             image_b64 = base64.b64encode(resized_data).decode()
 
-            # 逐步增加 max_tokens，第一次就给足够大
-            max_tokens = 8192 * (attempt + 1)  # 8192, 16384, 24576
+            # 逐步增加 max_tokens，首次用4096足够
+            max_tokens = 4096 * (attempt + 1)  # 4096, 8192, 12288, 16384, 20480
             print(f"[LLM] Attempt {attempt + 1}/{max_retries}, max_tokens={max_tokens}")
 
             result_text = await llm_service.chat_with_image(
@@ -237,15 +240,54 @@ async def extract_from_image(
             print(f"[LLM] Raw response length: {len(result_text)}")
             print(f"[LLM] Raw response: {result_text[:1000]}")
 
-            # 检测是否被截断（以 { 或 [ 结尾说明不完整）
-            if result_text and not result_text.rstrip().endswith((']', '}')):
-                print(f"[LLM] Response truncated, retrying with larger max_tokens...")
-                last_error = ValueError("响应被截断")
+            # 检查空响应
+            if not result_text or not result_text.strip():
+                print(f"[LLM] Empty response, retrying...")
+                last_error = ValueError("LLM返回空响应")
                 if attempt < max_retries - 1:
+                    await asyncio.sleep(1)
                     continue
+                raise last_error
 
-            result = llm_service.parse_json(result_text)
-            print(f"[LLM] Parsed result: {result}")
+            # 先尝试解析JSON，成功就不需要重试
+            try:
+                result = llm_service.parse_json(result_text)
+                print(f"[LLM] Parsed result: {result}")
+            except ValueError as parse_err:
+                # JSON解析失败，检查是否被截断
+                # 清理markdown代码块后再检测
+                cleaned = result_text.strip()
+                if cleaned.startswith('```'):
+                    # 去掉首尾的 ```
+                    lines = cleaned.split('\n')
+                    lines = [l for l in lines if not l.strip().startswith('```')]
+                    cleaned = '\n'.join(lines)
+
+                if cleaned.rstrip().endswith((']', '}')):
+                    # 以 ] 或 } 结尾，说明响应完整但JSON格式有问题
+                    print(f"[LLM] JSON parse failed but response looks complete: {parse_err}")
+                    raise ValueError(f"JSON解析失败: {result_text[:200]}")
+                else:
+                    # 被截断了，发送补全请求
+                    print(f"[LLM] Response truncated, requesting completion...")
+                    try:
+                        completion_prompt = f"请补全以下JSON的剩余部分，不要添加任何解释，只返回缺失的部分：\n\n{result_text[-200:]}"
+                        completion_text = await llm_service.chat(
+                            [{"role": "user", "content": completion_prompt}],
+                            max_tokens=2048,
+                            temperature=0.3,
+                        )
+                        # 拼接原始响应和补全内容
+                        full_text = result_text + completion_text
+                        print(f"[LLM] Completed response: {full_text[:500]}")
+                        result = llm_service.parse_json(full_text)
+                        print(f"[LLM] Parsed result after completion: {result}")
+                    except Exception as completion_err:
+                        print(f"[LLM] Completion failed: {completion_err}")
+                        last_error = ValueError("响应截断且补全失败")
+                        if attempt < max_retries - 1:
+                            continue
+                        raise last_error
             # 确保返回数组格式
             if isinstance(result, dict):
                 result = [result]
@@ -259,31 +301,13 @@ async def extract_from_image(
                         print(f"[LLM] Item {idx} missing content, skipping")
                         continue
 
-                    image_regions = item.get("image_regions", [])
-                    cropped_images = []
-
-                    for region_idx, region in enumerate(image_regions):
-                        if region and len(region) == 4:
-                            cropped_data = crop_image_region(image_data, region)
-                            if cropped_data:
-                                filename_prefix = f"question_{current_user.id}_{idx}_{region_idx}"
-                                image_path = save_cropped_image(cropped_data, filename_prefix)
-                                if image_path:
-                                    cropped_images.append(image_path)
-                                    print(f"[LLM] Cropped image saved: {image_path}")
-
-                    # 检查：如果声称有图但裁剪全部失败，跳过该题
-                    if image_regions and not cropped_images:
-                        print(f"[LLM] Item {idx} has image_regions but crop failed, skipping")
-                        continue
-
                     # 规范化 LaTeX 代码
                     if item.get("content"):
                         item["content"] = normalize_latex(item["content"])
                     if item.get("answer_analysis"):
                         item["answer_analysis"] = normalize_answer_analysis(item["answer_analysis"])
 
-                    item["cropped_images"] = cropped_images
+                    # 不再裁剪图片，只保留图片描述
                     item.pop("image_regions", None)
                     valid_items.append(item)
                 except Exception as item_error:
@@ -291,7 +315,7 @@ async def extract_from_image(
                     # 单题处理失败，跳过继续
 
             if valid_items:
-                return {"success": True, "data": valid_items}
+                return {"success": True, "data": valid_items, "has_image": True}
 
         except ValueError as e:
             last_error = e

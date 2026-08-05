@@ -19,6 +19,7 @@ from backend.schemas.practice import (
     WrongQuestionListResponse, PracticeStatsResponse,
     TagStats, DifficultyStats, RecentPractice
 )
+from backend.utils.math_compare import compare_math_expressions
 
 router = APIRouter()
 
@@ -62,7 +63,10 @@ async def submit_answer(
         correct_answer = answer_analysis.split("---解析---")[0].strip()
     else:
         correct_answer = answer_analysis.strip()
-    is_correct = 1 if data.answer.strip().lower() == correct_answer.lower() else 0
+
+    # 使用智能数学表达式比较
+    is_correct, comparison_msg = compare_math_expressions(data.answer, correct_answer)
+    is_correct = 1 if is_correct else 0
 
     # 记录练习
     session = PracticeSession(
@@ -159,6 +163,56 @@ async def toggle_mastered(
     await db.commit()
 
     return {"message": "已更新", "mastered": wq.mastered}
+
+
+@router.delete("/wrong-questions/{wq_id}")
+async def delete_wrong_question(
+    wq_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """删除错题记录"""
+    result = await db.execute(
+        select(WrongQuestion).where(
+            WrongQuestion.id == wq_id,
+            WrongQuestion.user_id == current_user.id
+        )
+    )
+    wq = result.scalar_one_or_none()
+    if not wq:
+        raise NotFoundException("记录")
+
+    await db.delete(wq)
+    await db.commit()
+
+    return {"message": "已删除"}
+
+
+@router.post("/wrong-questions/batch-delete")
+async def batch_delete_wrong_questions(
+    data: dict,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """批量删除错题记录"""
+    ids = data.get("ids", [])
+    if not ids:
+        raise HTTPException(status_code=400, detail="请选择要删除的错题")
+
+    result = await db.execute(
+        select(WrongQuestion).where(
+            WrongQuestion.id.in_(ids),
+            WrongQuestion.user_id == current_user.id
+        )
+    )
+    items = result.scalars().all()
+
+    for item in items:
+        await db.delete(item)
+
+    await db.commit()
+
+    return {"message": f"已删除 {len(items)} 条错题记录", "deleted_count": len(items)}
 
 
 @router.post("/wrong-questions/retry")

@@ -26,9 +26,8 @@ class Question(Base):
     image_path: Mapped[str] = mapped_column(Text, default='')
     images: Mapped[str] = mapped_column(Text, default='[]')  # JSON array: 多图片URL列表
     answer_analysis: Mapped[str] = mapped_column(Text, default='')  # 答案与解析合并在
-    grade: Mapped[str] = mapped_column(Text, default='初一')
-    category: Mapped[str] = mapped_column(Text, default='')
-    question_type: Mapped[str] = mapped_column(Text, default='')  # 题型：选择题/填空题/解答题/判断题/计算题
+    grade: Mapped[str] = mapped_column(Text, default='初一上')
+    question_type: Mapped[str] = mapped_column(Text, default='')  # 题型：单项选择/多项选择/填空题/解答题/判断题/计算题
     paper_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey('papers.id'), nullable=True)
     paper_question_number: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     created_by: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey('users.id'), nullable=True)
@@ -50,7 +49,6 @@ class Question(Base):
             "images": self.images,
             "answer_analysis": self.answer_analysis,
             "grade": self.grade,
-            "category": self.category,
             "question_type": self.question_type,
             "paper_id": self.paper_id,
             "paper_question_number": self.paper_question_number,

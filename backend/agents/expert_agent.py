@@ -152,7 +152,7 @@ class ExpertAgent:
   "analysis": "解题思路",
   "knowledge_points": ["知识点1", "知识点2"],
   "difficulty": "easy/medium/hard",
-  "question_type": "选择题/填空题/解答题"
+  "question_type": "单项选择/多项选择/填空题/解答题"
 }
 """ + retry_hint
 
@@ -202,7 +202,7 @@ class ExpertAgent:
   "title": "{title}",
   "sections": [
     {{
-      "name": "选择题",
+      "name": "单项选择",
       "questions": [1, 2, 3],
       "score_per_question": 5
     }},

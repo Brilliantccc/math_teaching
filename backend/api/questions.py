@@ -7,7 +7,7 @@ from typing import Optional, List
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Query
 from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, or_, func
+from sqlalchemy import select, or_, func, case, literal_column
 from sqlalchemy.orm import selectinload
 
 from backend.core.deps import get_db, get_current_user, require_teacher
@@ -31,14 +31,7 @@ async def get_categories(
     current_user: User = Depends(get_current_user)
 ):
     """获取所有已使用的分类"""
-    result = await db.execute(
-        select(Question.category)
-        .where(Question.category != '')
-        .distinct()
-        .order_by(Question.category)
-    )
-    categories = [row[0] for row in result.all()]
-    return {"categories": categories}
+    return {"categories": []}
 
 
 @router.get("/question-types")
@@ -70,7 +63,6 @@ async def get_questions(
     keyword: str = Query(default=''),
     difficulty: Optional[int] = Query(default=None),
     grade: str = Query(default=''),
-    category: str = Query(default=''),
     page: int = Query(default=1, ge=1),
     per_page: int = Query(default=20, ge=1, le=100),
     db: AsyncSession = Depends(get_db),
@@ -92,22 +84,43 @@ async def get_questions(
             query = query.where(Question.grade == grade_list[0])
         elif len(grade_list) > 1:
             query = query.where(Question.grade.in_(grade_list))
-    if category:
-        query = query.where(Question.category == category)
 
     # 获取总数
-    from sqlalchemy import func
     count_query = select(func.count()).select_from(query.subquery())
     total = (await db.execute(count_query)).scalar() or 0
 
-    # 分页查询 - 按序号从小到大排列
-    query = query.order_by(Question.display_order.asc())
+    # 定义年级排序顺序（支持上/下学期）
+    grade_order = case(
+        (Question.grade == '初一上', 1),
+        (Question.grade == '初一下', 2),
+        (Question.grade == '初二上', 3),
+        (Question.grade == '初二下', 4),
+        (Question.grade == '初三上', 5),
+        (Question.grade == '初三下', 6),
+        (Question.grade == '高一上', 7),
+        (Question.grade == '高一下', 8),
+        (Question.grade == '高二上', 9),
+        (Question.grade == '高二下', 10),
+        (Question.grade == '高三上', 11),
+        (Question.grade == '高三下', 12),
+        else_=13
+    )
+
+    # 分页查询 - 按年级分组，每组内按ID从小到大排列
+    query = query.order_by(grade_order.asc(), Question.id.asc())
     query = query.offset((page - 1) * per_page).limit(per_page)
     result = await db.execute(query)
     questions = result.scalars().all()
 
+    # 重新计算序号：根据当前排序顺序，从1开始递增
+    questions_with_order = []
+    for idx, q in enumerate(questions, 1):
+        q_dict = q.to_dict()
+        q_dict['display_order'] = idx  # 重新计算序号
+        questions_with_order.append(QuestionResponse(**q_dict))
+
     return QuestionListResponse(
-        questions=[QuestionResponse(**q.to_dict()) for q in questions],
+        questions=questions_with_order,
         total=total,
         page=page,
         per_page=per_page,
@@ -122,8 +135,7 @@ async def create_question(
     difficulty: int = Form(default=1),
     source: str = Form(default=''),
     answer_analysis: str = Form(default=''),
-    grade: str = Form(default='初一'),
-    category: str = Form(default=''),
+    grade: str = Form(default='初一上'),
     question_type: str = Form(default=''),
     paper_id: Optional[int] = Form(default=None),
     paper_question_number: Optional[int] = Form(default=None),
@@ -135,6 +147,9 @@ async def create_question(
 ):
     """创建新题目"""
     import json
+    # 清理answer_analysis中多余的字面换行符
+    if answer_analysis:
+        answer_analysis = answer_analysis.replace('\\n', '')
     print(f"[DB] Creating question with answer_analysis: {answer_analysis[:200] if answer_analysis else 'N/A'}")
     # 检查是否已存在相同内容的题目
     if content and content.strip():
@@ -205,7 +220,7 @@ async def create_question(
         content=content, tags=tags, difficulty=difficulty,
         source=source, image_path=image_path, images=json.dumps(images_list, ensure_ascii=False),
         answer_analysis=answer_analysis,
-        grade=grade, category=category, question_type=question_type,
+        grade=grade, question_type=question_type,
         paper_id=paper_id,
         paper_question_number=paper_question_number,
         created_by=current_user.id,
@@ -269,9 +284,8 @@ async def batch_create_questions(
 
         question = Question(
             content=item.content,
-            answer_analysis=item.answer_analysis,
+            answer_analysis=item.answer_analysis.replace('\\n', '') if item.answer_analysis else '',
             grade=item.grade,
-            category=item.category,
             question_type=item.question_type,
             difficulty=item.difficulty,
             image_path=item.image_path,
@@ -388,7 +402,6 @@ async def update_question(
     source: str = Form(default=None),
     answer_analysis: str = Form(default=None),
     grade: str = Form(default=None),
-    category: str = Form(default=None),
     question_type: str = Form(default=None),
     existing_images: str = Form(default='[]'),
     images: Optional[List[UploadFile]] = File(default=None),
@@ -405,9 +418,10 @@ async def update_question(
     if tags is not None: question.tags = tags
     if difficulty is not None: question.difficulty = difficulty
     if source is not None: question.source = source
-    if answer_analysis is not None: question.answer_analysis = answer_analysis
+    if answer_analysis is not None:
+        # 清理answer_analysis中多余的字面换行符
+        question.answer_analysis = answer_analysis.replace('\\n', '')
     if grade is not None: question.grade = grade
-    if category is not None: question.category = category
     if question_type is not None: question.question_type = question_type
 
     # 处理图片
@@ -502,7 +516,7 @@ async def batch_update_questions(
     if not data.updates:
         raise HTTPException(status_code=400, detail="没有要更新的内容")
 
-    allowed_fields = {"grade", "category", "difficulty", "tags"}
+    allowed_fields = {"grade", "difficulty", "tags"}
     filtered = {k: v for k, v in data.updates.items() if k in allowed_fields}
 
     if not filtered:

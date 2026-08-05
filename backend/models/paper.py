@@ -20,7 +20,7 @@ class Paper(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     name: Mapped[str] = mapped_column(Text, nullable=False)
-    grade: Mapped[str] = mapped_column(Text, default='初一')
+    grade: Mapped[str] = mapped_column(Text, default='初一上')
     image_path: Mapped[str] = mapped_column(Text, default='')
     pdf_path: Mapped[str] = mapped_column(Text, default='')
     answer_pdf_path: Mapped[str] = mapped_column(Text, default='')
