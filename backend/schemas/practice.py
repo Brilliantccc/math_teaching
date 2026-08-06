@@ -9,6 +9,10 @@ class StartPracticeRequest(BaseModel):
     tag: str = ''
     grade: str = ''
     count: int = Field(default=10, ge=1, le=100)
+    question_types: List[str] = Field(default=['单项选择', '多项选择', '填空题', '判断题'])
+    question_type_counts: Optional[dict] = Field(default=None)  # 按题型配置数量：{'单项选择': 5, '填空题': 3, ...}
+    # 按题型+难度配置数量：{'单项选择': {1: 3, 2: 2, 3: 0}, ...}
+    question_type_difficulty_counts: Optional[dict] = Field(default=None)
 
 
 class SubmitAnswerRequest(BaseModel):

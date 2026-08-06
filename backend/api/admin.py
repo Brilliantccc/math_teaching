@@ -18,6 +18,7 @@ from backend.core.security import get_password_hash
 from backend.models.user import User
 from backend.models.question import Question
 from backend.models.paper import Paper
+from backend.utils.math_compare import extract_answer_from_analysis
 from backend.config import settings
 from backend.schemas.admin import (
     UpdateUserRequest, ImportQuestionsRequest, BatchUpdateCategoriesRequest,
@@ -257,13 +258,18 @@ async def import_questions(
                 skipped += 1
                 continue
 
+        # 从 answer_analysis 中提取标准答案
+        answer_analysis = q.get("answer_analysis", "")
+        correct_answer = extract_answer_from_analysis(answer_analysis)
+
         question = Question(
             content=q.get("content", ""),
             tags=q.get("tags", "[]"),
             difficulty=q.get("difficulty", 1),
             source=q.get("source", ""),
             image_path=q.get("image_path", ""),
-            answer_analysis=q.get("answer_analysis", ""),
+            answer_analysis=answer_analysis,
+            correct_answer=correct_answer,
             grade=q.get("grade", "初一上"),
             paper_id=q.get("paper_id"),
             paper_question_number=q.get("paper_question_number"),

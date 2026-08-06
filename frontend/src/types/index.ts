@@ -209,6 +209,7 @@ export interface PracticeSessionRequest {
   tag?: string
   grade?: string
   count?: number
+  question_types?: string[]  // 题型筛选：['单项选择', '多项选择', '填空题', '判断题']
 }
 
 /** 提交答案请求 */

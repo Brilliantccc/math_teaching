@@ -185,6 +185,11 @@ function handleLogout() {
 
 :deep(.ant-layout-sider) {
   background: var(--color-bg-card);
+  position: sticky;
+  top: 64px;
+  align-self: flex-start;
+  height: calc(100vh - 64px);
+  overflow-y: auto;
 }
 
 :deep(.ant-menu-inline) {

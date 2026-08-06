@@ -39,7 +39,7 @@ const previewLoading = ref(false)
 const categories = ref<string[]>([])
 
 // 题型列表（从数据库动态加载）
-const questionTypes = ref<{type: string, count: number}[]>([])
+const questionTypes = ref<{type: string, count: number, difficulty_counts?: Record<number, number>}[]>([])
 const questionTypeLoading = ref(false)
 
 // 每道题的分值：{question_id: score}
@@ -55,21 +55,35 @@ const difficultyCount = ref({
   3: 5    // 困难
 })
 
+// 难度选项
+const DIFFICULTY_OPTIONS = [
+  { value: 1, label: '简单', color: 'green' },
+  { value: 2, label: '中等', color: 'orange' },
+  { value: 3, label: '困难', color: 'red' }
+]
+
+// 获取某题型某难度的可用数量
+function getAvailableCount(type: string, difficulty: number): number {
+  const qt = questionTypes.value.find(q => q.type === type)
+  if (qt && qt.difficulty_counts) {
+    return qt.difficulty_counts[difficulty] || 0
+  }
+  // 如果没有详细数据，返回总数作为上限
+  return qt?.count || 0
+}
+
 // 按题型生成数量
-const questionTypeCounts = ref<Record<string, number>>({
-  '单项选择': 5,
-  '多项选择': 2,
-  '填空题': 3,
-  '解答题': 2
-})
+const questionTypeCounts = ref<Record<string, number>>({})
+
+// 按题型+难度配置数量
+const questionTypeDifficultyCounts = ref<Record<string, Record<number, number>>>({})
 
 const formState = ref({
   name: '',
   count: 10,
   tags: [] as string[],
   difficulties: [1, 2, 3],
-  grade: gradeStore.currentGrade === '全部' ? '全部' : gradeStore.currentGrade,
-  question_type: ''
+  grade: gradeStore.currentGrade === '全部' ? '全部' : gradeStore.currentGrade
 })
 
 // 计算总分
@@ -170,12 +184,22 @@ async function loadQuestionTypes() {
       params: { grade: gradeParam }
     })
     questionTypes.value = response.data.question_types || []
-    // 更新可用题型的默认配置
+
+    // 清空并重新初始化用户配置（从0开始）
+    const newTypeCounts: Record<string, number> = {}
+    const newTypeDifficultyCounts: Record<string, Record<number, number>> = {}
+
     for (const qt of questionTypes.value) {
-      if (!(qt.type in questionTypeCounts.value)) {
-        questionTypeCounts.value[qt.type] = 0
-      }
+      // 用户配置的生成数量从0开始
+      newTypeCounts[qt.type] = 0
+      newTypeDifficultyCounts[qt.type] = { 1: 0, 2: 0, 3: 0 }
     }
+
+    questionTypeCounts.value = newTypeCounts
+    questionTypeDifficultyCounts.value = newTypeDifficultyCounts
+
+    // 注意：可用数量通过 questionTypes 数组中的 difficulty_counts 字段传递
+    // 不需要额外存储，直接从 questionTypes 获取即可
   } catch (error) {
     console.error('Failed to load question types:', error)
   } finally {
@@ -203,19 +227,31 @@ async function appendGenerate() {
     // 获取年级参数（支持"全部"、"初中全部"、"高中全部"等）
     const gradeParam = gradeStore.getGradeParam()
 
-    // 检查是否有配置题型数量
+    // 优先检查是否有配置题型+难度数量
+    const hasTypeDifficultyConfig = Object.values(questionTypeDifficultyCounts.value).some(
+      counts => Object.values(counts).some(count => count > 0)
+    )
+
+    // 其次检查是否有配置题型数量
     const hasTypeConfig = Object.values(questionTypeCounts.value).some(count => count > 0)
 
     let allNewIds: number[] = []
 
-    if (hasTypeConfig) {
+    if (hasTypeDifficultyConfig) {
+      // 按题型+难度配置生成
+      const response = await api.post('/api/tests/auto', {
+        question_type_difficulty_counts: questionTypeDifficultyCounts.value,
+        tags: formState.value.tags,
+        grade: gradeParam
+      })
+      allNewIds = response.data.question_ids || []
+    } else if (hasTypeConfig) {
       // 按题型配置生成
       const response = await api.post('/api/tests/auto', {
         question_type_counts: questionTypeCounts.value,
         tags: formState.value.tags,
         difficulties: formState.value.difficulties,
-        grade: gradeParam,
-        question_type: formState.value.question_type
+        grade: gradeParam
       })
       allNewIds = response.data.question_ids || []
     } else {
@@ -226,8 +262,7 @@ async function appendGenerate() {
             count: count,
             tags: formState.value.tags,
             difficulties: [parseInt(diff)],
-            grade: gradeParam,
-            question_type: formState.value.question_type
+            grade: gradeParam
           })
           allNewIds.push(...response.data.question_ids)
         }
@@ -257,6 +292,9 @@ async function appendGenerate() {
     }
 
     message.success(`已追加 ${addedCount} 道题目`)
+
+    // 生成后刷新题型数据，更新可用数量
+    await loadQuestionTypes()
   } catch (error) {
     console.error('Failed to generate test:', error)
   } finally {
@@ -510,36 +548,36 @@ function moveQuestion(index: number, direction: -1 | 1) {
               </a-select>
             </a-form-item>
           </a-col>
-          <a-col :span="4">
-            <a-form-item label="题型筛选">
-              <a-select
-                v-model:value="formState.question_type"
-                allow-clear
-                placeholder="全部题型"
-                style="width: 100%"
-                :loading="questionTypeLoading"
-              >
-                <a-select-option v-for="qt in questionTypes" :key="qt.type" :value="qt.type">
-                  {{ qt.type }} ({{ qt.count }}题)
-                </a-select-option>
-              </a-select>
-            </a-form-item>
-          </a-col>
         </a-row>
         <a-row :gutter="16">
           <a-col :span="24">
-            <a-form-item label="按题型生成数量">
-              <div class="question-type-config" v-if="questionTypes.length > 0">
-                <div v-for="qt in questionTypes" :key="qt.type" class="type-item">
-                  <a-tag :color="getTypeColor(qt.type)">{{ qt.type }}</a-tag>
-                  <span class="type-count">({{ qt.count }}题可用)</span>
-                  <a-input-number
-                    v-model:value="questionTypeCounts[qt.type]"
-                    :min="0"
-                    :max="qt.count"
-                    size="small"
-                  />
-                  <span class="unit">题</span>
+            <a-form-item label="按题型和难度生成数量">
+              <template #label>
+                <div style="display: flex; align-items: center; gap: 8px;">
+                  <span>按题型和难度生成数量</span>
+                  <a-button type="link" size="small" @click="loadQuestionTypes" :loading="questionTypeLoading">
+                    🔄 刷新题型数据
+                  </a-button>
+                </div>
+              </template>
+              <div class="type-difficulty-config" v-if="questionTypes.length > 0">
+                <div v-for="qt in questionTypes" :key="qt.type" class="type-row">
+                  <div class="type-header">
+                    <a-tag :color="getTypeColor(qt.type)">{{ qt.type }}</a-tag>
+                    <span class="type-total">共 {{ qt.count }} 题可用</span>
+                  </div>
+                  <div class="difficulty-row">
+                    <div v-for="diff in DIFFICULTY_OPTIONS" :key="diff.value" class="difficulty-item">
+                      <a-tag :color="diff.color" size="small">{{ diff.label }}：{{ questionTypeDifficultyCounts[qt.type]?.[diff.value] || 0 }} / {{ getAvailableCount(qt.type, diff.value) }}</a-tag>
+                      <a-input-number
+                        v-model:value="questionTypeDifficultyCounts[qt.type][diff.value]"
+                        :min="0"
+                        :max="getAvailableCount(qt.type, diff.value)"
+                        size="small"
+                        style="width: 60px"
+                      />
+                    </div>
+                  </div>
                 </div>
               </div>
               <div v-else class="difficulty-config">
@@ -750,7 +788,44 @@ function moveQuestion(index: number, direction: -1 | 1) {
   gap: 8px;
 }
 
-/* 题型配置 */
+/* 题型+难度配置 */
+.type-difficulty-config {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.type-row {
+  background: var(--color-bg-hover);
+  padding: 12px 16px;
+  border-radius: var(--radius-md);
+}
+
+.type-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.type-total {
+  font-size: 12px;
+  color: var(--color-text-muted);
+}
+
+.difficulty-row {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.difficulty-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* 旧样式保留兼容 */
 .question-type-config {
   display: flex;
   flex-wrap: wrap;

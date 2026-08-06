@@ -19,7 +19,7 @@ from backend.schemas.practice import (
     WrongQuestionListResponse, PracticeStatsResponse,
     TagStats, DifficultyStats, RecentPractice
 )
-from backend.utils.math_compare import compare_math_expressions
+from backend.utils.math_compare import compare_math_expressions, extract_answer_from_analysis
 
 router = APIRouter()
 
@@ -31,14 +31,107 @@ async def start_practice(
     current_user: User = Depends(get_current_user)
 ):
     """开始练习"""
+    # 支持在线练习的题型
+    supported_types = ['单项选择', '多项选择', '填空题', '判断题']
+
+    # 优先使用按题型+难度配置数量
+    if data.question_type_difficulty_counts and any(
+        any(v > 0 for v in counts.values())
+        for counts in data.question_type_difficulty_counts.values()
+    ):
+        question_ids = []
+
+        # 处理年级参数（支持逗号分隔的多个年级）
+        grade_list = []
+        if data.grade:
+            grade_list = [g.strip() for g in data.grade.split(',') if g.strip()]
+
+        for q_type, difficulty_counts in data.question_type_difficulty_counts.items():
+            if q_type not in supported_types:
+                continue
+
+            for difficulty, count in difficulty_counts.items():
+                if count <= 0:
+                    continue
+
+                # 查询该题型+难度的题目
+                query = select(Question).where(
+                    Question.question_type == q_type,
+                    Question.difficulty == difficulty
+                )
+
+                if grade_list:
+                    query = query.where(Question.grade.in_(grade_list))
+                if data.tag:
+                    query = query.where(Question.tags.contains(data.tag))
+
+                result = await db.execute(query)
+                questions = result.scalars().all()
+
+                # 随机抽取指定数量
+                selected = random.sample(questions, min(count, len(questions)))
+                question_ids.extend([q.id for q in selected])
+
+        return PracticeSessionResponse(question_ids=question_ids, count=len(question_ids))
+
+    # 其次使用按题型配置数量
+    if data.question_type_counts and any(v > 0 for v in data.question_type_counts.values()):
+        question_ids = []
+
+        # 处理年级参数
+        grade_list = []
+        if data.grade:
+            grade_list = [g.strip() for g in data.grade.split(',') if g.strip()]
+
+        for q_type, count in data.question_type_counts.items():
+            if count <= 0 or q_type not in supported_types:
+                continue
+
+            # 查询该题型的题目
+            query = select(Question).where(Question.question_type == q_type)
+
+            if grade_list:
+                query = query.where(Question.grade.in_(grade_list))
+            if data.tag:
+                query = query.where(Question.tags.contains(data.tag))
+
+            result = await db.execute(query)
+            questions = result.scalars().all()
+
+            # 随机抽取指定数量
+            selected = random.sample(questions, min(count, len(questions)))
+            question_ids.extend([q.id for q in selected])
+
+        return PracticeSessionResponse(question_ids=question_ids, count=len(question_ids))
+
+    # 否则使用原有的 count 参数
     query = select(Question)
     if data.tag:
         query = query.where(Question.tags.contains(data.tag))
+
+    # 处理年级参数
+    grade_list = []
     if data.grade:
-        query = query.where(Question.grade == data.grade)
+        grade_list = [g.strip() for g in data.grade.split(',') if g.strip()]
+    if grade_list:
+        query = query.where(Question.grade.in_(grade_list))
+
+    # 题型筛选
+    if data.question_types:
+        # 只保留支持在线练习的题型
+        valid_types = [t for t in data.question_types if t in supported_types]
+        if valid_types:
+            query = query.where(Question.question_type.in_(valid_types))
+        else:
+            query = query.where(Question.question_type.in_(supported_types))
+    else:
+        query = query.where(Question.question_type.in_(supported_types))
 
     result = await db.execute(query)
     all_questions = result.scalars().all()
+
+    if len(all_questions) == 0:
+        return PracticeSessionResponse(question_ids=[], count=0)
 
     selected = random.sample(all_questions, min(data.count, len(all_questions)))
     question_ids = [q.id for q in selected]
@@ -57,12 +150,13 @@ async def submit_answer(
     if not question:
         raise NotFoundException("题目")
 
-    # 从 answer_analysis 中提取答案部分（分隔符前为答案）
-    answer_analysis = question.answer_analysis or ""
-    if "---解析---" in answer_analysis:
-        correct_answer = answer_analysis.split("---解析---")[0].strip()
-    else:
-        correct_answer = answer_analysis.strip()
+    # 优先使用 correct_answer 字段（已标准化的答案）
+    correct_answer = question.correct_answer or ""
+
+    # 如果 correct_answer 为空，从 answer_analysis 中提取（兼容旧数据）
+    if not correct_answer:
+        answer_analysis = question.answer_analysis or ""
+        correct_answer = extract_answer_from_analysis(answer_analysis)
 
     # 使用智能数学表达式比较
     is_correct, comparison_msg = compare_math_expressions(data.answer, correct_answer)

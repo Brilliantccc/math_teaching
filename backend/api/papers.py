@@ -16,6 +16,7 @@ from backend.models.paper import Paper
 from backend.models.question import Question
 from backend.schemas.paper import PaperResponse, PaperListResponse, AddPaperQuestionRequest
 from backend.config import settings
+from backend.utils.math_compare import extract_answer_from_analysis
 
 router = APIRouter()
 
@@ -230,12 +231,16 @@ async def add_paper_question(
     if not paper:
         raise NotFoundException("试卷")
 
+    # 从 answer_analysis 中提取标准答案
+    correct_answer = extract_answer_from_analysis(data.answer_analysis or '')
+
     question = Question(
         title=data.title,
         content=data.content,
         tags=data.tags,
         difficulty=data.difficulty,
         answer_analysis=data.answer_analysis,
+        correct_answer=correct_answer,
         paper_question_number=data.paper_question_number,
         grade=data.grade,
         source=f"{paper.name} 第{data.paper_question_number or '?'}题",

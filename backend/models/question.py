@@ -26,6 +26,7 @@ class Question(Base):
     image_path: Mapped[str] = mapped_column(Text, default='')
     images: Mapped[str] = mapped_column(Text, default='[]')  # JSON array: 多图片URL列表
     answer_analysis: Mapped[str] = mapped_column(Text, default='')  # 答案与解析合并在
+    correct_answer: Mapped[str] = mapped_column(String(50), default='')  # 标准答案（选择题为A/B/C/D，填空题为答案值）
     grade: Mapped[str] = mapped_column(Text, default='初一上')
     question_type: Mapped[str] = mapped_column(Text, default='')  # 题型：单项选择/多项选择/填空题/解答题/判断题/计算题
     paper_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey('papers.id'), nullable=True)
@@ -48,6 +49,7 @@ class Question(Base):
             "image_path": self.image_path,
             "images": self.images,
             "answer_analysis": self.answer_analysis,
+            "correct_answer": self.correct_answer,
             "grade": self.grade,
             "question_type": self.question_type,
             "paper_id": self.paper_id,

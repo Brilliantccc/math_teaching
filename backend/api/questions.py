@@ -14,6 +14,7 @@ from backend.core.deps import get_db, get_current_user, require_teacher
 from backend.core.exceptions import NotFoundException
 from backend.models.user import User
 from backend.models.question import Question
+from backend.utils.math_compare import extract_answer_from_analysis
 from backend.schemas.question import (
     QuestionUpdate, QuestionResponse, QuestionListResponse,
     BatchCreateRequest, BatchDeleteRequest, BatchUpdateRequest
@@ -41,6 +42,7 @@ async def get_question_types(
     current_user: User = Depends(get_current_user)
 ):
     """获取所有题型及其题目数量（支持按年级筛选，多个年级用逗号分隔）"""
+    # 先获取各题型总数
     query = select(
         Question.question_type,
         func.count(Question.id).label('count')
@@ -53,8 +55,35 @@ async def get_question_types(
 
     query = query.group_by(Question.question_type)
     result = await db.execute(query)
-    types = [{"type": row[0], "count": row[1]} for row in result.all()]
-    return {"question_types": types}
+    types_list = [{"type": row[0], "count": row[1]} for row in result.all()]
+
+    # 获取各题型各难度的数量
+    difficulty_query = select(
+        Question.question_type,
+        Question.difficulty,
+        func.count(Question.id).label('count')
+    ).where(Question.question_type != '')
+
+    if grade and grade != '全部':
+        grade_list = [g.strip() for g in grade.split(',') if g.strip()]
+        if grade_list:
+            difficulty_query = difficulty_query.where(Question.grade.in_(grade_list))
+
+    difficulty_query = difficulty_query.group_by(Question.question_type, Question.difficulty)
+    difficulty_result = await db.execute(difficulty_query)
+
+    # 构建难度分布数据
+    for type_item in types_list:
+        type_item["difficulty_counts"] = {1: 0, 2: 0, 3: 0}
+
+    for row in difficulty_result.all():
+        q_type, difficulty, count = row
+        for type_item in types_list:
+            if type_item["type"] == q_type:
+                type_item["difficulty_counts"][difficulty] = count
+                break
+
+    return {"question_types": types_list}
 
 
 @router.get("", response_model=QuestionListResponse)
@@ -216,10 +245,14 @@ async def create_question(
     max_order = max_order_result.scalar() or 0
     next_order = max_order + 1
 
+    # 从 answer_analysis 中提取标准答案
+    correct_answer = extract_answer_from_analysis(answer_analysis)
+
     question = Question(
         content=content, tags=tags, difficulty=difficulty,
         source=source, image_path=image_path, images=json.dumps(images_list, ensure_ascii=False),
         answer_analysis=answer_analysis,
+        correct_answer=correct_answer,
         grade=grade, question_type=question_type,
         paper_id=paper_id,
         paper_question_number=paper_question_number,
@@ -282,9 +315,14 @@ async def batch_create_questions(
                 skipped_count += 1
                 continue
 
+        # 从 answer_analysis 中提取标准答案
+        answer_analysis_clean = item.answer_analysis.replace('\\n', '') if item.answer_analysis else ''
+        correct_answer = extract_answer_from_analysis(answer_analysis_clean)
+
         question = Question(
             content=item.content,
-            answer_analysis=item.answer_analysis.replace('\\n', '') if item.answer_analysis else '',
+            answer_analysis=answer_analysis_clean,
+            correct_answer=correct_answer,
             grade=item.grade,
             question_type=item.question_type,
             difficulty=item.difficulty,

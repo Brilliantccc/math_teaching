@@ -74,6 +74,9 @@ def normalize_latex_to_sympy(expr: str) -> str:
         r'\times': '*',
         r'\cdot': '*',
         r'\div': '/',
+        r'\geq': '>=',
+        r'\leq': '<=',
+        r'\neq': '!=',
         r'\pi': 'pi',
         r'\e': 'E',
         r'\infty': 'oo',
@@ -112,6 +115,7 @@ def normalize_answer(expr: str) -> str:
     处理常见的输入变体：
     - 空格处理
     - 乘号变体 (*, ×, ·, 省略)
+    - 比较运算符变体 (>=, ≥, <=, ≤, !=, ≠)
     - 括号变体
     - 分数与小数
     """
@@ -120,6 +124,11 @@ def normalize_answer(expr: str) -> str:
     # 如果是 LaTeX 格式，先转换
     if '\\' in s or '{' in s:
         s = normalize_latex_to_sympy(s)
+
+    # 统一比较运算符（必须在乘号之前处理，避免 >= 被误处理）
+    s = s.replace('≥', '>=')
+    s = s.replace('≤', '<=')
+    s = s.replace('≠', '!=')
 
     # 统一乘号
     s = s.replace('×', '*')
@@ -141,6 +150,9 @@ def normalize_answer(expr: str) -> str:
         return f"({whole}+{num}/{den})"
 
     s = re.sub(r'(\d+)\s+(\d+)/(\d+)', replace_mixed, s)
+
+    # 简化分数 (如 "(1)/(2)" -> "1/2")
+    s = re.sub(r'\((\d+)\)/\((\d+)\)', r'\1/\2', s)
 
     # 移除多余空格
     s = re.sub(r'\s+', '', s)
@@ -191,6 +203,80 @@ def try_parse_as_number(expr: str) -> Optional[float]:
         return None
 
 
+def extract_answer_from_analysis(answer_analysis: str) -> str:
+    """
+    从 answer_analysis 中提取标准答案
+
+    支持的格式：
+    - 答案：A
+    - 答案:A
+    - A
+    - 正确答案：B
+    - $\text{答案}$是D
+    - $\text{答}$答A
+    - 答案是C
+    - $\text{答案}$：$50$ （填空题）
+    - $\text{答案}$：$x \geq \frac{1}{2}$ （填空题）
+
+    返回: 标准答案（选择题为A/B/C/D，填空题为答案值）
+    """
+    if not answer_analysis:
+        return ""
+
+    # 1. 先用分隔符提取答案部分
+    if "---解析---" in answer_analysis:
+        answer_part = answer_analysis.split("---解析---")[0].strip()
+    else:
+        answer_part = answer_analysis.strip()
+
+    # 2. 提取答案值（优先从 LaTeX 中提取数学表达式）
+    # 匹配 $...$ 中的内容作为答案值
+    latex_matches = re.findall(r'\$([^$]+)\$', answer_part)
+
+    # 过滤掉 LaTeX 文本命令（如 \text{答案}）
+    answer_value = ""
+    for match in latex_matches:
+        # 跳过纯文本命令
+        if match.startswith('\\text{') or match.startswith('\\mathrm{'):
+            continue
+        # 这是答案值（如 50, x \geq \frac{1}{2}）
+        answer_value = match
+        break
+
+    # 3. 如果没有找到 LaTeX 答案值，尝试从文本中提取
+    if not answer_value:
+        # 移除所有 LaTeX 格式
+        answer_part = re.sub(r'\$[^$]*\$', '', answer_part)
+
+        # 移除常见前缀（按长度从长到短排序）
+        prefixes = [
+            '正确答案：', '正确答案:',
+            '答案是：', '答案是:',
+            '答案为：', '答案为:',
+            '答案：', '答案:',
+            '答案是', '答案为',
+            '答案', '答',
+        ]
+        for prefix in prefixes:
+            if answer_part.startswith(prefix):
+                answer_part = answer_part[len(prefix):]
+                break
+
+        # 提取选项字母（A-D）或数值
+        match = re.search(r'([A-D])', answer_part)
+        if match:
+            answer_value = match.group(1)
+        else:
+            # 尝试提取数字或数学表达式
+            match = re.search(r'(-?\d+(?:\.\d+)?(?:/\d+)?)', answer_part)
+            if match:
+                answer_value = match.group(1)
+            else:
+                answer_value = answer_part.strip()
+
+    return answer_value
+
+
 def compare_math_expressions(user_answer: str, correct_answer: str) -> Tuple[bool, str]:
     """
     比较两个数学表达式是否等价
@@ -201,13 +287,13 @@ def compare_math_expressions(user_answer: str, correct_answer: str) -> Tuple[boo
     user_stripped = user_answer.strip()
     correct_stripped = correct_answer.strip()
 
-    # 移除 LaTeX 格式的答案前缀（如 "$\text{答案}$是D"）
+    # 移除 LaTeX 格式的答案前缀（如 "$\text{答案}$是D" 或 "$\text{答}$答A"）
     def extract_choice_from_latex(s):
         import re
         # 移除所有 LaTeX 格式（$...$）
         s = re.sub(r'\$[^$]*\$', '', s)
         # 移除常见前缀（包括中文和全角字符）
-        prefixes = ['答案：', '答案:', '正确答案：', '正确答案:', '答案是', '答案为', '答案是', '是']
+        prefixes = ['答案：', '答案:', '正确答案：', '正确答案:', '答案是', '答案为', '答案', '答', '是']
         for prefix in prefixes:
             if s.startswith(prefix):
                 s = s[len(prefix):]
@@ -224,6 +310,17 @@ def compare_math_expressions(user_answer: str, correct_answer: str) -> Tuple[boo
     # 标准化输入
     user_norm = normalize_answer(user_answer)
     correct_norm = normalize_answer(correct_answer)
+
+    # 0. 对于包含比较运算符的表达式，直接使用字符串比较
+    #    因为 sympy 会将其解析为不等式，无法直接比较
+    comparison_ops = ['>=', '<=', '!=', '>', '<', '=']
+    has_comparison = any(op in user_norm or op in correct_norm for op in comparison_ops)
+    if has_comparison:
+        # 移除空格后直接比较
+        user_simple = re.sub(r'\s+', '', user_norm)
+        correct_simple = re.sub(r'\s+', '', correct_norm)
+        if user_simple == correct_simple:
+            return True, "表达式相同"
 
     # 1. 首先尝试数值比较
     user_num = try_parse_as_number(user_norm)
@@ -297,6 +394,10 @@ def compare_math_expressions(user_answer: str, correct_answer: str) -> Tuple[boo
     # 移除所有空格和常见等价符号后比较
     def simplify_for_compare(s):
         s = re.sub(r'\s+', '', s)
+        # 统一比较运算符
+        s = s.replace('≥', '>=')
+        s = s.replace('≤', '<=')
+        s = s.replace('≠', '!=')
         s = s.replace('*', '').replace('·', '').replace('×', '')
         s = s.replace('(', '').replace(')', '')
         s = s.replace('（', '').replace('）', '')

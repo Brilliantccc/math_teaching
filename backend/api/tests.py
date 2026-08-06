@@ -131,8 +131,41 @@ async def auto_generate_test(
     if data.grade:
         grade_list = [g.strip() for g in data.grade.split(',') if g.strip()]
 
-    # 如果指定了按题型配置数量
-    if data.question_type_counts:
+    # 优先使用按题型+难度配置数量
+    if data.question_type_difficulty_counts and any(
+        any(v > 0 for v in counts.values())
+        for counts in data.question_type_difficulty_counts.values()
+    ):
+        selected_ids = []
+
+        for q_type, difficulty_counts in data.question_type_difficulty_counts.items():
+            for difficulty, count in difficulty_counts.items():
+                if count <= 0:
+                    continue
+
+                query = select(Question).where(
+                    Question.question_type == q_type,
+                    Question.difficulty == difficulty
+                )
+
+                # 应用其他筛选条件
+                if data.tags:
+                    tag_conditions = [Question.tags.contains(t) for t in data.tags]
+                    query = query.where(or_(*tag_conditions))
+                if grade_list:
+                    query = query.where(Question.grade.in_(grade_list))
+
+                result = await db.execute(query)
+                questions = result.scalars().all()
+
+                # 随机抽样
+                selected = random.sample(questions, min(count, len(questions)))
+                selected_ids.extend([q.id for q in selected])
+
+        return {"question_ids": selected_ids, "count": len(selected_ids)}
+
+    # 其次使用按题型配置数量
+    if data.question_type_counts and any(v > 0 for v in data.question_type_counts.values()):
         selected_ids = []
         for q_type, count in data.question_type_counts.items():
             if count <= 0:
