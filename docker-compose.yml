@@ -1,0 +1,58 @@
+# ============================================
+# Docker Compose 配置 - 数学题库管理系统
+# ============================================
+#
+# 快速开始：
+#   1. cp backend/.env.example backend/.env
+#   2. 编辑 backend/.env 填入你的配置
+#   3. docker compose up -d --build
+#
+# 注意：backend/.env 文件已配置在 .gitignore 中，不会被提交到 Git
+# ============================================
+
+services:
+  # 后端服务
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: math-bank-backend
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    volumes:
+      # 数据持久化
+      - ./backend/data:/app/backend/data
+      - ./backend/uploads:/app/backend/uploads
+      # 环境变量文件（只读挂载）
+      - ./backend/.env:/app/backend/.env:ro
+    environment:
+      - PYTHONPATH=/app
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    networks:
+      - math-bank-network
+
+  # 前端服务
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: math-bank-frontend
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - math-bank-network
+
+# 网络配置
+networks:
+  math-bank-network:
+    driver: bridge

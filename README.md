@@ -44,7 +44,10 @@ math-question-bank/
 │   └── vite.config.ts     # Vite 配置
 ├── DESIGN.md              # 设计系统文档
 ├── PRODUCT.md             # 产品需求文档
-└── requirements.txt       # Python 依赖
+├── requirements.txt       # Python 依赖
+├── docker-compose.yml     # Docker Compose 配置
+└── docs/                  # 项目文档
+    └── docker-deployment.md
 ```
 
 ## 安装与配置
@@ -75,15 +78,15 @@ npm install
 
 **Windows (PowerShell):**
 ```powershell
-copy .env.example .env
+copy backend\.env.example backend\.env
 ```
 
 **Linux / Mac (Bash):**
 ```bash
-cp .env.example .env
+cp backend/.env.example backend/.env
 ```
 
-然后编辑 `.env` 文件，配置以下参数：
+然后编辑 `backend/.env` 文件，配置以下参数：
 
 | 参数 | 说明 | 示例值 |
 |------|------|--------|
@@ -137,6 +140,30 @@ npm run dev
 - **Node.js 版本**：建议使用 Node.js 16+
 - **端口冲突**：如果端口 8000 或 5173 被占用，可以修改启动命令中的端口号
 - **防火墙**：确保防火墙允许访问这些端口
+
+### Docker 部署（推荐）
+
+使用 Docker 可以快速部署，无需手动安装依赖：
+
+```bash
+# 1. 克隆项目
+git clone <your-repo-url>
+cd math-question-bank
+
+# 2. 创建环境变量配置
+cp backend/.env.example backend/.env
+# 编辑 backend/.env 填入你的配置
+
+# 3. 启动服务
+docker compose up -d --build
+
+# 4. 访问应用
+# 前端: http://localhost
+# API 文档: http://localhost:8000/docs
+```
+
+详细 Docker 部署说明请参考 [docs/docker-deployment.md](docs/docker-deployment.md)。
+
 ## 功能模块
 
 ### 教师端

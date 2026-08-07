@@ -1,0 +1,44 @@
+# Python
+__pycache__
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+.venv/
+.env.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# 数据和上传（通过 volume 挂载）
+data/
+uploads/
+
+# 日志
+*.log
+logs/
+
+# 测试
+tests/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# 文档
+docs/
+*.md
+LICENSE
+
+# Git
+.git
+.gitignore
+
+# 其他
+*.db
+*.sqlite
+*.sqlite3
